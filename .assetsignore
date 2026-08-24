@@ -1,0 +1,9 @@
+.git/
+.gitignore
+.assetsignore
+README.md
+worker.js
+wrangler.jsonc
+schema.sql
+node_modules/
+.wrangler/

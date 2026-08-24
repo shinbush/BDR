@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Копилка — личные финансы</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">₽</span><span>Копилка</span></div>
+      <button class="icon-button" id="profileButton" aria-label="Профиль">НК</button>
+    </header>
+
+    <section id="home" class="screen active">
+      <div class="greeting"><p class="eyebrow" id="todayLabel">ПОНЕДЕЛЬНИК, 24 АВГУСТА</p><h1 id="greetingTitle">Добрый вечер</h1></div>
+      <article class="balance-card">
+        <div class="balance-top"><span>Доступно сейчас</span><span class="change">↗ 8,4%</span></div>
+        <div class="balance-value" id="balanceValue">86 420 ₽</div>
+        <div class="balance-breakdown"><span>Доходы <b id="incomeSmall">128 000 ₽</b></span><span>Расходы <b id="expenseSmall">41 580 ₽</b></span></div>
+        <div class="balance-dots"><i></i><i></i><i class="active-dot"></i></div>
+      </article>
+
+      <div class="section-heading"><h2>Быстрые действия</h2></div>
+      <div class="quick-actions">
+        <button class="quick income" data-action="income"><span>+</span>Доход</button>
+        <button class="quick expense" data-action="expense"><span>−</span>Расход</button>
+        <button class="quick goal" data-action="goal"><span>◎</span>Цель</button>
+        <button class="quick plan" data-action="plan"><span>▦</span>План</button>
+      </div>
+
+      <div class="section-heading"><h2>Бюджет августа</h2><button class="text-button" data-go="plan">Все</button></div>
+      <article class="budget-summary">
+        <div><p>Распределено</p><strong id="allocatedValue">38 200 ₽ <small>из 128 000 ₽</small></strong></div>
+        <div class="ring" id="budgetRing"><span id="budgetPercent">30%</span></div>
+        <div class="summary-progress"><span style="width:30%"></span></div>
+        <p class="muted">Не распределено <b id="unallocatedValue">89 800 ₽</b></p>
+      </article>
+
+      <div class="section-heading"><h2>Последние операции</h2><button class="text-button" data-go="history">Все</button></div>
+      <div class="transaction-list" id="recentTransactions"></div>
+    </section>
+
+    <section id="plan" class="screen">
+      <div class="page-title"><div><p class="eyebrow">АВГУСТ 2026</p><h1>Финансовый план</h1></div><div class="title-actions"><button class="filter-button" id="editPlan" aria-label="Настроить план">⚙</button><button class="round-add" id="addBudget">+</button></div></div>
+      <article class="unallocated-card"><div><span>Не распределено</span><strong id="planUnallocated">89 800 ₽</strong></div><span class="unallocated-icon">⌁</span></article>
+      <div class="hint">Распределите доход по категориям — так вы всегда будете знать, сколько ещё можно потратить.</div>
+      <div class="budget-list" id="budgetList"></div>
+    </section>
+
+    <section id="goals" class="screen">
+      <div class="page-title"><div><p class="eyebrow">ВАШИ МЕЧТЫ</p><h1>Накопления</h1></div><button class="round-add" data-action="goal">+</button></div>
+      <div class="goals-total"><span>Всего накоплено</span><strong id="goalsTotal">184 000 ₽</strong><p>Вы уже на 31% пути к своим целям</p></div>
+      <div class="goals-list" id="goalsList"></div>
+    </section>
+
+    <section id="history" class="screen">
+      <div class="page-title"><div><p class="eyebrow">ДВИЖЕНИЕ ДЕНЕГ</p><h1>История</h1></div><button class="filter-button">☷</button></div>
+      <div class="filters"><button class="selected">Все</button><button>Расходы</button><button>Доходы</button></div>
+      <div class="history-list" id="historyList"></div>
+    </section>
+
+    <section id="stats" class="screen">
+      <div class="page-title"><div><p class="eyebrow">ЗА АВГУСТ</p><h1>Аналитика</h1></div></div>
+      <article class="chart-card"><div class="chart-header"><div><p>Расходы</p><strong id="analyticsExpense">41 580 ₽</strong></div><span class="chart-note">−12% к июлю</span></div><div class="chart" aria-label="График расходов"><i style="height:38%"></i><i style="height:62%"></i><i style="height:45%"></i><i style="height:79%"></i><i style="height:56%"></i><i style="height:90%"></i><i style="height:50%"></i></div><div class="chart-days"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div></article>
+      <div class="analytics-grid"><article><span>Больше всего</span><strong id="topCategory">🛒 Продукты</strong><small id="topCategoryAmount">16 840 ₽</small></article><article><span>В среднем в день</span><strong id="avgExpense">1 540 ₽</strong><small>расходов</small></article></div>
+      <div class="section-heading"><h2>Выполнение бюджета</h2></div><div id="analyticsBudget" class="analytics-budget"></div>
+    </section>
+
+    <section id="categories" class="screen">
+      <div class="page-title"><div><p class="eyebrow">НАСТРОЙКА УЧЁТА</p><h1>Категории</h1></div><button class="round-add" data-action="category">+</button></div>
+      <div class="filters category-tabs"><button class="selected" data-category-type="expense">Расходы</button><button data-category-type="income">Доходы</button></div>
+      <p class="hint">Категории можно переименовывать, менять эмодзи и архивировать. Архивные категории не показываются при добавлении операций.</p>
+      <div class="category-list" id="categoryList"></div>
+    </section>
+
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-go="home"><span>⌂</span>Главная</button><button class="nav-item" data-go="plan"><span>▤</span>План</button><button class="nav-item" data-go="goals"><span>◎</span>Цели</button><button class="nav-item" data-go="history"><span>◷</span>История</button><button class="nav-item" data-go="categories"><span>☷</span>Категории</button>
+    </nav>
+  </main>
+
+  <div class="modal-backdrop" id="modalBackdrop"></div>
+  <section class="modal" id="operationModal" aria-modal="true" role="dialog">
+    <div class="modal-handle"></div><div class="modal-title"><h2 id="operationTitle">Новый расход</h2><button class="close-modal">×</button></div>
+    <form id="operationForm"><input type="hidden" id="operationType" value="expense" /><label>Сумма<div class="amount-input"><input id="operationAmount" type="number" min="1" placeholder="0" required><span>₽</span></div></label><label>Категория<select id="operationCategory"></select></label><label>Комментарий <input id="operationComment" type="text" placeholder="Например, такси до дома"></label><label>Дата <input id="operationDate" type="date" required></label><button class="primary-button" type="submit">Сохранить операцию</button></form>
+  </section>
+  <section class="modal" id="goalModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="goalModalTitle">Новая цель</h2><button class="close-modal">×</button></div><form id="goalForm"><input id="goalId" type="hidden"><label>Название <input id="goalTitle" type="text" required placeholder="Например, отпуск"></label><label>Описание <input id="goalDescription" type="text" placeholder="Зачем и для чего копите"></label><label>Сумма цели<div class="amount-input"><input id="goalAmount" type="number" min="1" required placeholder="0"><span>₽</span></div></label><label>Накоплено сейчас<div class="amount-input"><input id="goalCurrent" type="number" min="0" value="0"><span>₽</span></div></label><label>Желаемая дата <input id="goalDate" type="date"></label><button class="primary-button" type="submit">Сохранить цель</button></form></section>
+  <section class="modal" id="budgetModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="budgetModalTitle">Распределить бюджет</h2><button class="close-modal">×</button></div><form id="budgetForm"><input id="budgetId" type="hidden"><label>Категория<select id="budgetCategory"></select></label><label>Сумма на август<div class="amount-input"><input id="budgetAmount" type="number" min="0" required placeholder="0"><span>₽</span></div></label><button class="primary-button" type="submit">Сохранить бюджет</button></form></section>
+  <section class="modal" id="planModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2>Настроить план</h2><button class="close-modal">×</button></div><form id="planForm"><label>Доход для распределения<div class="amount-input"><input id="planIncome" type="number" min="0" required><span>₽</span></div></label><p class="hint">Это планируемая сумма на месяц. Её можно изменить в любой момент, не меняя историю операций.</p><button class="primary-button" type="submit">Сохранить план</button></form></section>
+  <section class="modal" id="categoryModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="categoryModalTitle">Новая категория</h2><button class="close-modal">×</button></div><form id="categoryForm"><input id="categoryId" type="hidden"><label>Тип<select id="categoryType"><option value="expense">Расход</option><option value="income">Доход</option></select></label><label>Эмодзи <input id="categoryEmoji" type="text" required maxlength="4" placeholder="🛒"></label><label>Название <input id="categoryName" type="text" required placeholder="Например, здоровье"></label><label>Цвет <input id="categoryColor" type="color" value="#6756d9"></label><button class="primary-button" type="submit">Сохранить категорию</button><button class="danger-button" id="archiveCategory" type="button" hidden>Архивировать категорию</button></form></section>
+</body>
+<script src="telegram.js"></script>
+<script src="app.js"></script>
+</html>

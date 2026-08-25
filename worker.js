@@ -29,7 +29,8 @@ async function getTelegramUser(request, env) {
 
   params.delete('hash');
   const checkString = [...params.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join('\n');
-  const secret = await hmac(encoder.encode(env.BOT_TOKEN), 'WebAppData');
+  // Telegram uses the constant WebAppData as HMAC key and the bot token as data.
+  const secret = await hmac(encoder.encode('WebAppData'), env.BOT_TOKEN);
   const signature = await hmac(secret, checkString);
   const received = Uint8Array.from(hash.match(/.{1,2}/g) || [], part => Number.parseInt(part, 16));
   if (!equalBytes(signature, received)) return null;

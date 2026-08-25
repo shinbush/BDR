@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#0b1220" />
   <title>Копилка — личные финансы</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -48,7 +48,7 @@
     </section>
 
     <section id="plan" class="screen">
-      <div class="page-title"><div><p class="eyebrow">АВГУСТ 2026</p><h1>Финансовый план</h1></div><div class="title-actions"><button class="filter-button" id="editPlan" aria-label="Настроить план">⚙</button><button class="round-add" id="addBudget">+</button></div></div>
+      <div class="page-title"><div><p class="eyebrow" id="planMonthLabel">АВГУСТ 2026</p><h1>Финансовый план</h1></div><div class="title-actions"><button class="filter-button" id="prevPlanMonth" aria-label="Предыдущий месяц">‹</button><button class="filter-button" id="nextPlanMonth" aria-label="Следующий месяц">›</button><button class="filter-button" id="editPlan" aria-label="Настроить план">⚙</button><button class="round-add" id="addBudget">+</button></div></div>
       <article class="unallocated-card"><div><span>Не распределено</span><strong id="planUnallocated">89 800 ₽</strong></div><span class="unallocated-icon">⌁</span></article>
       <div class="hint">Распределите доход по категориям — так вы всегда будете знать, сколько ещё можно потратить.</div>
       <div class="budget-list" id="budgetList"></div>
@@ -88,7 +88,7 @@
   <div class="modal-backdrop" id="modalBackdrop"></div>
   <section class="modal" id="operationModal" aria-modal="true" role="dialog">
     <div class="modal-handle"></div><div class="modal-title"><h2 id="operationTitle">Новый расход</h2><button class="close-modal">×</button></div>
-    <form id="operationForm"><input type="hidden" id="operationType" value="expense" /><label>Сумма<div class="amount-input"><input id="operationAmount" type="number" min="1" placeholder="0" required><span>₽</span></div></label><label>Категория<select id="operationCategory"></select></label><label>Комментарий <input id="operationComment" type="text" placeholder="Например, такси до дома"></label><div class="date-time"><label>Дата <input id="operationDate" type="date" required></label><label>Время <input id="operationTime" type="time" required></label></div><button class="primary-button" type="submit">Сохранить операцию</button></form>
+    <form id="operationForm"><input type="hidden" id="operationId" /><input type="hidden" id="operationType" value="expense" /><label>Сумма<div class="amount-input"><input id="operationAmount" type="number" min="1" placeholder="0" required><span>₽</span></div></label><label id="operationTargetLabel">Категория<select id="operationCategory"></select></label><label>Комментарий <input id="operationComment" type="text" placeholder="Например, такси до дома"></label><div class="date-time"><label>Дата <input id="operationDate" type="date" required></label><label>Время <input id="operationTime" type="time" required></label></div><button class="primary-button" type="submit">Сохранить операцию</button></form>
   </section>
   <section class="modal" id="goalModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="goalModalTitle">Новая цель</h2><button class="close-modal">×</button></div><form id="goalForm"><input id="goalId" type="hidden"><label>Название <input id="goalTitle" type="text" required placeholder="Например, отпуск"></label><label>Описание <input id="goalDescription" type="text" placeholder="Зачем и для чего копите"></label><label>Сумма цели<div class="amount-input"><input id="goalAmount" type="number" min="1" required placeholder="0"><span>₽</span></div></label><label>Накоплено сейчас<div class="amount-input"><input id="goalCurrent" type="number" min="0" value="0"><span>₽</span></div></label><label>Желаемая дата <input id="goalDate" type="date"></label><button class="primary-button" type="submit">Сохранить цель</button><button class="danger-button" id="deleteGoal" type="button" hidden>Удалить цель</button></form></section>
   <section class="modal" id="budgetModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="budgetModalTitle">Распределить бюджет</h2><button class="close-modal">×</button></div><form id="budgetForm"><input id="budgetId" type="hidden"><label>Категория<select id="budgetCategory"></select></label><label>Сумма на август<div class="amount-input"><input id="budgetAmount" type="number" min="0" required placeholder="0"><span>₽</span></div></label><button class="primary-button" type="submit">Сохранить бюджет</button><button class="danger-button" id="removeBudget" type="button" hidden>Убрать из финансового плана</button></form></section>

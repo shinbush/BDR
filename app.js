@@ -31,15 +31,31 @@ function normalizeState() {
   state.categories.forEach(c=>{ c.type ??= ['salary','freelance','investment'].includes(c.id)?'income':'expense'; });
   defaults.categories.filter(c=>c.type==='income'&&!state.categories.some(x=>x.id===c.id)).forEach(c=>state.categories.push(structuredClone(c)));
   const current=monthKey(new Date());
-  if (!state.plans[current]) { const legacy={incomeTarget:state.planIncome||state.income,budgets:{},spent:{}}; state.categories.filter(c=>c.type==='expense'&&c.inPlan!==false&&Number(c.plan)>0).forEach(c=>{legacy.budgets[c.id]=Number(c.plan);legacy.spent[c.id]=Number(c.spent||0)}); state.plans[current]=legacy; }
+  if (!state.plans[current]) { const legacy={incomeTarget:state.planIncome||state.income,budgets:{},spent:{}}; state.categories.filter(c=>c.type==='expense'&&c.inPlan!==false&&Number(c.plan)>0).forEach(c=>{legacy.budgets[c.id]=Number(c.plan)}); state.plans[current]=legacy; }
   state.transactions.forEach(t=>{t.time??='';});
+  rebuildLedgerTotals();
+}
+function rebuildLedgerTotals(){
+  // History is the source of truth. Old versions stored category totals separately,
+  // which left phantom expenses after a history record was deleted.
+  state.income=0;
+  state.categories.filter(c=>c.type==='expense').forEach(c=>c.spent=0);
+  Object.values(state.plans).forEach(plan=>plan.spent={});
+  state.transactions.forEach(t=>{
+    const amount=Number(t.amount||0);
+    if(t.type==='income') state.income+=amount;
+    if(t.type==='expense'){
+      const category=getCategory(t.category); if(category)category.spent+=amount;
+      const plan=getPlan(monthKey(t.date)); plan.spent[t.category]=(plan.spent[t.category]||0)+amount;
+    }
+  });
 }
 normalizeState();
 function setSyncStatus(message='', error=false) { const el=$('#syncStatus'); if(!el)return; el.textContent=message; el.classList.toggle('error',error); }
 const canSync=()=>Boolean(window.TG?.isTelegram&&window.TG.webApp?.initData);
 async function saveRemote(){try{const response=await fetch('/api/state',{method:'PUT',headers:{'content-type':'application/json','authorization':`tma ${window.TG.webApp.initData}`},body:JSON.stringify({state})});if(!response.ok)throw Error();setSyncStatus('Сохранено');setTimeout(()=>setSyncStatus(),1800)}catch{setSyncStatus('Нет синхронизации',true)}}
 function save(){localStorage.setItem(storageKey,JSON.stringify(state));if(remoteReady&&canSync()){clearTimeout(syncTimer);syncTimer=setTimeout(saveRemote,500)}}
-async function hydrateRemote(){if(!canSync())return;setSyncStatus('Загрузка…');try{const response=await fetch('/api/state',{headers:{authorization:`tma ${window.TG.webApp.initData}`}});if(!response.ok)throw Error();const payload=await response.json();if(payload.state?.categories){state=payload.state;normalizeState();render()}remoteReady=true;if(!payload.state)save();else setSyncStatus('Синхронизировано');setTimeout(()=>setSyncStatus(),1800)}catch{remoteReady=true;setSyncStatus('Нет синхронизации',true)}}
+async function hydrateRemote(){if(!canSync())return;setSyncStatus('Загрузка…');try{const response=await fetch('/api/state',{headers:{authorization:`tma ${window.TG.webApp.initData}`}});if(!response.ok)throw Error();const payload=await response.json();if(payload.state?.categories){state=payload.state;normalizeState();render()}remoteReady=true;save();setSyncStatus('Синхронизировано');setTimeout(()=>setSyncStatus(),1800)}catch{remoteReady=true;setSyncStatus('Нет синхронизации',true)}}
 function applyOperation(t, direction) {
   const amount=Number(t.amount||0)*direction;
   if(t.type==='income') state.income += amount;

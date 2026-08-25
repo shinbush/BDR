@@ -1,18 +1,21 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "kopilka-mini-app",
-  "main": "worker.js",
-  "compatibility_date": "2026-08-25",
-  "assets": {
-    "directory": ".",
-    "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "kopilka-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
-    }
-  ]
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "kopilka-mini-app",
+	"main": "worker.js",
+	"compatibility_date": "2026-08-25",
+	"assets": {
+		"directory": ".",
+		"binding": "ASSETS",
+		"run_worker_first": [
+			"/api/*"
+		]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "kopilka-db",
+			"database_id": "edf7bacd-cf5d-4ec0-b673-d7ce90efa699",
+			"remote": true
+		}
+	]
 }

@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
+  <style>.planned-payment-waiting{margin:0;color:#8a93a4;font-size:10px;line-height:1.35}</style>
   <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
 </head>
 <body>
@@ -32,6 +33,9 @@
         <button class="quick income" data-action="income"><span>+</span>Доход</button>
         <button class="quick expense" data-action="expense"><span>−</span>Расход</button>
       </div>
+
+      <div class="section-heading"><h2>Ближайшие платежи</h2><button class="text-button" data-go="payments">Все</button></div>
+      <div class="planned-payments-preview" id="upcomingPayments"></div>
 
       <div class="section-heading"><h2>Последние операции</h2><button class="text-button" data-go="history">Все</button></div>
       <div class="transaction-list" id="recentTransactions"></div>
@@ -70,6 +74,13 @@
       <div class="category-list" id="categoryList"></div>
     </section>
 
+    <section id="payments" class="screen">
+      <div class="page-title"><div><p class="eyebrow">НАПОМИНАНИЯ</p><h1>Плановые платежи</h1></div><button class="round-add" id="addPlannedPayment" aria-label="Добавить плановый платёж">+</button></div>
+      <p class="hint">Это только напоминания. Деньги не списываются, пока вы сами не сохраните расход в «Копилке».</p>
+      <div class="inline-notice" id="plannedPaymentsNotice" aria-live="polite" hidden></div>
+      <div class="planned-payments-list" id="plannedPaymentsList"></div>
+    </section>
+
     <nav class="bottom-nav">
       <button class="nav-item active" data-go="home"><span>⌂</span>Главная</button><button class="nav-item" data-go="plan"><span>▤</span>План</button><button class="nav-item" data-go="goals"><span>◎</span>Цели</button><button class="nav-item" data-go="history"><span>◷</span>История</button><button class="nav-item" data-go="categories"><span>☷</span>Категории</button>
     </nav>
@@ -78,12 +89,28 @@
   <div class="modal-backdrop" id="modalBackdrop"></div>
   <section class="modal" id="operationModal" aria-modal="true" role="dialog">
     <div class="modal-handle"></div><div class="modal-title"><h2 id="operationTitle">Новый расход</h2><button class="close-modal">×</button></div>
+    <p class="inline-notice operation-context" id="operationContext" hidden></p>
     <form id="operationForm"><input type="hidden" id="operationId" /><input type="hidden" id="operationType" value="expense" /><label>Сумма<div class="amount-input"><input id="operationAmount" type="number" min="1" placeholder="0" required><span>₽</span></div></label><label id="operationTargetLabel">Категория<select id="operationCategory"></select></label><label>Комментарий <input id="operationComment" type="text" placeholder="Например, такси до дома"></label><div class="date-time"><label>Дата <input id="operationDate" type="date" required></label><label>Время <input id="operationTime" type="time" required></label></div><button class="primary-button" type="submit">Сохранить операцию</button></form>
   </section>
   <section class="modal" id="goalModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="goalModalTitle">Новая цель</h2><button class="close-modal">×</button></div><form id="goalForm"><input id="goalId" type="hidden"><label>Название <input id="goalTitle" type="text" required placeholder="Например, отпуск"></label><label>Описание <input id="goalDescription" type="text" placeholder="Зачем и для чего копите"></label><label>Сумма цели<div class="amount-input"><input id="goalAmount" type="number" min="1" required placeholder="0"><span>₽</span></div></label><label>Накоплено сейчас<div class="amount-input"><input id="goalCurrent" type="number" min="0" value="0"><span>₽</span></div></label><label>Желаемая дата <input id="goalDate" type="date"></label><button class="primary-button" type="submit">Сохранить цель</button><button class="danger-button" id="deleteGoal" type="button" hidden>Удалить цель</button></form></section>
   <section class="modal" id="budgetModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="budgetModalTitle">Распределить бюджет</h2><button class="close-modal">×</button></div><form id="budgetForm"><input id="budgetId" type="hidden"><label>Категория<select id="budgetCategory"></select></label><label>Сумма на август<div class="amount-input"><input id="budgetAmount" type="number" min="0" required placeholder="0"><span>₽</span></div></label><button class="primary-button" type="submit">Сохранить бюджет</button><button class="danger-button" id="removeBudget" type="button" hidden>Убрать из финансового плана</button></form></section>
   <section class="modal" id="planModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2>Настроить план</h2><button class="close-modal">×</button></div><form id="planForm"><label>Доход для распределения<div class="amount-input"><input id="planIncome" type="number" min="0" required><span>₽</span></div></label><p class="hint">Это планируемая сумма на месяц. Её можно изменить в любой момент, не меняя историю операций.</p><button class="primary-button" type="submit">Сохранить план</button></form></section>
   <section class="modal" id="categoryModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="categoryModalTitle">Новая категория</h2><button class="close-modal">×</button></div><form id="categoryForm"><input id="categoryId" type="hidden"><label>Тип<select id="categoryType"><option value="expense">Расход</option><option value="income">Доход</option></select></label><label>Эмодзи <input id="categoryEmoji" type="text" required maxlength="4" placeholder="🛒"></label><label>Название <input id="categoryName" type="text" required placeholder="Например, здоровье"></label><label>Цвет <input id="categoryColor" type="color" value="#6756d9"></label><button class="primary-button" type="submit">Сохранить категорию</button><button class="danger-button" id="archiveCategory" type="button" hidden>Архивировать категорию</button></form></section>
+  <section class="modal" id="plannedPaymentModal" aria-modal="true" role="dialog">
+    <div class="modal-handle"></div><div class="modal-title"><h2 id="plannedPaymentModalTitle">Новый плановый платёж</h2><button class="close-modal">×</button></div>
+    <form id="plannedPaymentForm">
+      <input id="plannedPaymentId" type="hidden">
+      <label>Название <input id="plannedPaymentTitle" type="text" maxlength="80" required placeholder="Например, аренда квартиры"></label>
+      <label>Сумма<div class="amount-input"><input id="plannedPaymentAmount" type="number" min="1" step="1" required placeholder="0"><span>₽</span></div></label>
+      <label>Категория расхода<select id="plannedPaymentCategory" required></select></label>
+      <label>Повторять<select id="plannedPaymentFrequency"><option value="weekly">Каждую неделю</option><option value="monthly" selected>Каждый месяц</option><option value="yearly">Каждый год</option></select></label>
+      <div class="date-time"><label>Первое напоминание <input id="plannedPaymentDate" type="date" required></label><label>Время <input id="plannedPaymentTime" type="time" required></label></div>
+      <p class="hint">В нужное время Telegram напомнит о платеже. Баланс изменится только после сохранения операции.</p>
+      <p class="inline-notice form-notice" id="plannedPaymentFormNotice" hidden></p>
+      <button class="primary-button" type="submit">Сохранить напоминание</button>
+      <button class="danger-button" id="deletePlannedPayment" type="button" hidden>Удалить напоминание</button>
+    </form>
+  </section>
 </body>
 <script src="telegram.js"></script>
 <script src="app.js"></script>

@@ -5,7 +5,8 @@ const defaults = {
     {id:'salary',type:'income',emoji:'💼',name:'Зарплата',color:'#1aaa85'}, {id:'freelance',type:'income',emoji:'💻',name:'Фриланс',color:'#1aaa85'}, {id:'investment',type:'income',emoji:'📈',name:'Инвестиции',color:'#1aaa85'}
   ],
   goals: [],
-  transactions: []
+  transactions: [],
+  onboarding: { openingBalanceHandled: false }
 };
 const $ = s => document.querySelector(s);
 const storageKey = window.TG?.storageKey || 'kopilka-data';
@@ -23,13 +24,19 @@ function getGoal(id) { return state.goals.find(g => String(g.id) === String(id))
 function activeCategories(type) { return state.categories.filter(c => c.type === type && !c.archived); }
 function getPlan(key=selectedPlanMonth, create=true) { if (!state.plans[key] && create) state.plans[key] = { incomeTarget: 0, budgets: {}, spent: {} }; return state.plans[key]; }
 function planCategories() { const plan=getPlan(); return activeCategories('expense').filter(c => Object.hasOwn(plan.budgets,c.id)); }
-function expenses() { return activeCategories('expense').reduce((sum,c)=>sum+(c.spent||0),0); }
+function openingBalance() { return state.transactions.filter(t=>t.type==='opening_balance').reduce((sum,t)=>sum+Number(t.amount||0),0); }
+function expenses() { return state.transactions.filter(t=>t.type==='expense').reduce((sum,t)=>sum+Number(t.amount||0),0); }
 function goalNet() { return state.transactions.filter(t=>t.type==='goal_deposit'||t.type==='goal_withdrawal').reduce((sum,t)=>sum+(t.type==='goal_deposit'?t.amount:-t.amount),0); }
-function availableNow() { return state.income - expenses() - goalNet(); }
+function availableNow() { return openingBalance() + state.income - expenses() - goalNet(); }
 function allocated() { return Object.values(getPlan().budgets).reduce((sum,n)=>sum+Number(n||0),0); }
 function reserved() { const plan=getPlan(); return Object.keys(plan.budgets).reduce((sum,id)=>sum+Math.max(0,Number(plan.budgets[id]||0)-Number(plan.spent[id]||0)),0); }
 function normalizeState() {
   state.income ??= 0; state.categories ??=[]; state.goals ??=[]; state.transactions ??=[]; state.plans ??={};
+  const hasOpeningBalanceFlag=Boolean(state.onboarding&&typeof state.onboarding==='object'&&Object.hasOwn(state.onboarding,'openingBalanceHandled'));
+  if(!state.onboarding||typeof state.onboarding!=='object')state.onboarding={};
+  // Existing users had no onboarding flag before this release, so do not interrupt
+  // them with the first-launch question.
+  if(!hasOpeningBalanceFlag)state.onboarding.openingBalanceHandled=true;
   state.categories.forEach(c=>{ c.type ??= ['salary','freelance','investment'].includes(c.id)?'income':'expense'; });
   defaults.categories.filter(c=>c.type==='income'&&!state.categories.some(x=>x.id===c.id)).forEach(c=>state.categories.push(structuredClone(c)));
   const current=monthKey(new Date());
@@ -67,7 +74,21 @@ async function apiFetch(path, options={}) {
 async function saveRemote(){const snapshot=JSON.stringify({state});const write=async()=>{try{const response=await fetch('/api/state',{method:'PUT',headers:{'content-type':'application/json','authorization':`tma ${window.TG.webApp.initData}`},body:snapshot});if(!response.ok)throw Error();setSyncStatus('Сохранено');setTimeout(()=>setSyncStatus(),1800);return true}catch{setSyncStatus('Нет синхронизации',true);return false}};stateSaveQueue=stateSaveQueue.then(write,write);return stateSaveQueue}
 async function saveRemoteNow(){if(!canSync())return false;clearTimeout(syncTimer);return saveRemote()}
 function save(){localStorage.setItem(storageKey,JSON.stringify(state));if(remoteReady&&canSync()){clearTimeout(syncTimer);syncTimer=setTimeout(saveRemote,500)}}
-async function hydrateRemote(){if(!canSync())return;setSyncStatus('Загрузка…');try{const response=await fetch('/api/state',{headers:{authorization:`tma ${window.TG.webApp.initData}`}});if(!response.ok)throw Error();const payload=await response.json();if(payload.state?.categories){state=payload.state;normalizeState();render()}remoteReady=true;save();setSyncStatus('Синхронизировано');setTimeout(()=>setSyncStatus(),1800)}catch{remoteReady=true;setSyncStatus('Нет синхронизации',true)}}
+async function hydrateRemote(){
+  if(!canSync())return;
+  setSyncStatus('Загрузка…');
+  try{
+    const response=await fetch('/api/state',{headers:{authorization:`tma ${window.TG.webApp.initData}`}});
+    if(!response.ok)throw Error();
+    const payload=await response.json();
+    if(payload.state&&typeof payload.state==='object'){state=payload.state;normalizeState();render()}
+    remoteReady=true;
+    if(!state.onboarding?.openingBalanceHandled)openOpeningBalanceModal(true);
+    else save();
+    setSyncStatus('Синхронизировано');
+    setTimeout(()=>setSyncStatus(),1800);
+  }catch{remoteReady=true;setSyncStatus('Нет синхронизации',true)}
+}
 
 // Planned payments live in their own API/table. They are deliberately not added to
 // `state`, because `state` is the financial ledger that is synchronised as a whole.
@@ -185,8 +206,21 @@ function applyOperation(t, direction) {
   if(t.type==='expense') { const c=getCategory(t.category); if(c)c.spent=Math.max(0,Number(c.spent||0)+amount); const plan=getPlan(monthKey(t.date)); plan.spent[t.category]=Math.max(0,Number(plan.spent[t.category]||0)+amount); }
   if(t.type==='goal_deposit'||t.type==='goal_withdrawal') { const goal=getGoal(t.goalId); const multiplier=t.type==='goal_deposit'?1:-1; if(goal)goal.current=Math.max(0,Number(goal.current||0)+amount*multiplier); }
 }
-function operationTarget(t){ if(t.type==='goal_deposit'||t.type==='goal_withdrawal'){const g=getGoal(t.goalId);return {emoji:g?.emoji||'🎯',name:g?.title||'Цель'}} const c=getCategory(t.category);return {emoji:c?.emoji||'💳',name:c?.name||'Операция'}; }
-function transactionHtml(t){const target=operationTarget(t), sign=['income','goal_withdrawal'].includes(t.type)?'+':'−';const kind=t.type==='income'?'income':t.type==='goal_withdrawal'?'income':'expense';const label=t.type==='goal_deposit'?'Пополнение цели':t.type==='goal_withdrawal'?'Снятие с цели':target.name;return `<div class="transaction"><span class="transaction-icon">${target.emoji}</span><div><div class="transaction-title">${t.comment||label}</div><div class="transaction-meta">${label} · ${new Date(t.date+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}${t.time?' · '+t.time:''}</div></div><span class="transaction-amount ${kind}">${sign}${money(t.amount)}</span><button class="edit-transaction" data-edit-operation="${t.id}" aria-label="Изменить операцию">✎</button><button class="delete-transaction" data-delete-transaction="${t.id}" aria-label="Удалить операцию">×</button></div>`}
+function operationTarget(t){
+  if(t.type==='opening_balance')return {emoji:'🏁',name:'Начальный баланс'};
+  if(t.type==='goal_deposit'||t.type==='goal_withdrawal'){const g=getGoal(t.goalId);return {emoji:g?.emoji||'🎯',name:g?.title||'Цель'}}
+  const c=getCategory(t.category);return {emoji:c?.emoji||'💳',name:c?.name||'Операция'};
+}
+function transactionHtml(t){
+  const target=operationTarget(t),opening=t.type==='opening_balance',sign=opening||['income','goal_withdrawal'].includes(t.type)?'+':'−';
+  const kind=opening?'opening':t.type==='income'?'income':t.type==='goal_withdrawal'?'income':'expense';
+  const label=opening?'Начальный баланс':t.type==='goal_deposit'?'Пополнение цели':t.type==='goal_withdrawal'?'Снятие с цели':target.name;
+  const date=new Date(t.date+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'short'});
+  const controls=opening
+    ? `<button class="edit-transaction" data-edit-opening-balance="${t.id}" aria-label="Изменить стартовый баланс">✎</button>`
+    : `<button class="edit-transaction" data-edit-operation="${t.id}" aria-label="Изменить операцию">✎</button><button class="delete-transaction" data-delete-transaction="${t.id}" aria-label="Удалить операцию">×</button>`;
+  return `<div class="transaction${opening?' opening-transaction':''}"><span class="transaction-icon">${target.emoji}</span><div><div class="transaction-title">${opening?label:t.comment||label}</div><div class="transaction-meta">${opening?'Старт учёта':label} · ${date}${t.time?' · '+t.time:''}</div></div><span class="transaction-amount ${kind}">${sign}${money(t.amount)}</span>${controls}</div>`
+}
 function renderHistory(){const types=historyFilter==='income'?['income','goal_withdrawal']:historyFilter==='expense'?['expense','goal_deposit']:null,list=types?state.transactions.filter(t=>types.includes(t.type)):state.transactions;$('#historyList').innerHTML=list.length?list.map((t,i)=>`${i===0||t.date!==list[i-1].date?`<div class="history-date">${new Date(t.date+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'long'})}</div>`:''}${transactionHtml(t)}`).join(''):'<p class="hint">Операций этого типа пока нет.</p>';document.querySelectorAll('[data-history-filter]').forEach(button=>button.classList.toggle('selected',button.dataset.historyFilter===historyFilter))}
 function localDay(value) { const date=new Date(`${value}T12:00:00`); return Number.isNaN(date.getTime())?null:date; }
 function addLocalDays(date, days) { return new Date(date.getFullYear(),date.getMonth(),date.getDate()+days,12); }
@@ -353,15 +387,48 @@ function render(){
 function renderCategories(){const list=activeCategories(categoryTab);$('#categoryList').innerHTML=list.length?list.map(c=>`<article class="budget-item category-item" data-edit-category="${c.id}"><div class="budget-row"><span class="budget-emoji" style="background:${c.color}22">${c.emoji}</span><div><div class="budget-name">${c.name}</div><div class="budget-numbers">${c.type==='expense'?'Расходы и планирование':'Доходы'}</div></div><span class="category-edit">Изменить ›</span></div></article>`).join(''):'<p class="hint">Категорий пока нет. Создайте первую кнопкой «+».</p>';document.querySelectorAll('[data-category-type]').forEach(b=>b.classList.toggle('selected',b.dataset.categoryType===categoryTab))}
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===id));if(id==='stats')renderAnalytics();window.Telegram?.WebApp?.BackButton?.[id==='home'?'hide':'show']?.();window.scrollTo(0,0)}
 function closeModal(){document.querySelectorAll('.modal').forEach(x=>x.classList.remove('open'));$('#modalBackdrop').classList.remove('open');$('#operationContext').hidden=true;pendingPaymentCompletion=null;window.Telegram?.WebApp?.BackButton?.hide?.()}
-function openModal(id){closeModal();$('#'+id).classList.add('open');$('#modalBackdrop').classList.add('open');window.Telegram?.WebApp?.BackButton?.show?.()}
+function openModal(id){closeModal();$('#'+id).classList.add('open');$('#modalBackdrop').classList.add('open');window.Telegram?.WebApp?.BackButton?.[id==='openingBalanceModal'?'hide':'show']?.()}
+function openingBalanceTransaction(){return state.transactions.find(t=>t.type==='opening_balance')}
+function setOpeningBalanceNotice(message=''){const notice=$('#openingBalanceNotice');notice.textContent=message;notice.hidden=!message}
+function openOpeningBalanceModal(onboarding=false){
+  const transaction=openingBalanceTransaction();
+  $('#openingBalanceModalTitle').textContent=onboarding?'Начнём с текущего остатка':'Стартовый баланс';
+  $('#openingBalanceIntro').textContent=onboarding?'Сколько у вас доступно сейчас?':'Укажите текущий остаток. Он не будет считаться доходом.';
+  $('#openingBalanceAmount').value=transaction?.amount??'';
+  $('#skipOpeningBalance').hidden=!onboarding;
+  setOpeningBalanceNotice();
+  openModal('openingBalanceModal');
+}
+function finishOpeningBalance(amount){
+  const normalized=Math.round(Number(amount||0));
+  if(!Number.isFinite(normalized)||normalized<0){setOpeningBalanceNotice('Введите сумму от 0 ₽.');return}
+  const transaction=openingBalanceTransaction();
+  state.onboarding.openingBalanceHandled=true;
+  if(normalized===0)state.transactions=state.transactions.filter(t=>t.type!=='opening_balance');
+  else if(transaction)Object.assign(transaction,{amount:normalized,comment:'Начальный баланс'});
+  else{const fields=nowFields();state.transactions.unshift({id:`opening-${Date.now()}`,type:'opening_balance',amount:normalized,comment:'Начальный баланс',...fields})}
+  closeModal();
+  render();
+  haptic();
+}
+function maybeOpenOpeningBalance(){if(!state.onboarding?.openingBalanceHandled)openOpeningBalanceModal(true)}
 function fillCategories(select,type,selected){select.innerHTML=activeCategories(type).map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}function fillGoals(select,selected){select.innerHTML=state.goals.map(g=>`<option value="${g.id}" ${String(g.id)===String(selected)?'selected':''}>${g.emoji||'🎯'} ${g.title}</option>`).join('')}
 function openOperation(type,operation){const f=$('#operationForm');f.reset();$('#operationId').value=operation?.id||'';$('#operationType').value=type;const isGoal=type==='goal_deposit'||type==='goal_withdrawal';$('#operationTitle').textContent=operation?'Изменить операцию':type==='income'?'Новый доход':type==='expense'?'Новый расход':type==='goal_deposit'?'Пополнить цель':'Снять с цели';$('#operationTargetLabel').childNodes[0].textContent=isGoal?'Цель': 'Категория';if(isGoal)fillGoals($('#operationCategory'),operation?.goalId);else fillCategories($('#operationCategory'),type,operation?.category);const now=nowFields();$('#operationAmount').value=operation?.amount||'';$('#operationComment').value=operation?.comment||'';$('#operationDate').value=operation?.date||now.date;$('#operationTime').value=operation?.time||now.time;openModal('operationModal')}
 function editBudget(id){const c=getCategory(id),plan=getPlan();$('#budgetId').value=c.id;$('#budgetModalTitle').textContent=`Бюджет: ${c.name}`;fillCategories($('#budgetCategory'),'expense',c.id);$('#budgetCategory').disabled=true;$('#budgetAmount').value=plan.budgets[c.id]||0;$('#removeBudget').hidden=false;openModal('budgetModal')}function editGoal(id){const g=getGoal(id);$('#goalModalTitle').textContent='Изменить цель';$('#goalId').value=g.id;$('#goalTitle').value=g.title;$('#goalDescription').value=g.description||'';$('#goalAmount').value=g.target;$('#goalCurrent').value=g.current;$('#goalCurrent').disabled=true;$('#goalDate').value=g.date||'';$('#deleteGoal').hidden=false;openModal('goalModal')}function editCategory(id){const c=getCategory(id);$('#categoryModalTitle').textContent='Изменить категорию';$('#categoryId').value=c.id;$('#categoryType').value=c.type;$('#categoryEmoji').value=c.emoji;$('#categoryName').value=c.name;$('#categoryColor').value=c.color||'#6756d9';$('#archiveCategory').hidden=false;openModal('categoryModal')}
 function deleteOperation(id){const t=state.transactions.find(x=>String(x.id)===String(id));if(!t||!confirm(`Удалить операцию на ${money(t.amount)}?`))return;applyOperation(t,-1);state.transactions=state.transactions.filter(x=>String(x.id)!==String(id));render();haptic()}
 document.addEventListener('click',e=>{const go=e.target.closest('[data-go]');if(go)showScreen(go.dataset.go);const action=e.target.closest('[data-action]');if(action){const type=action.dataset.action;if(type==='goal'){$('#goalForm').reset();$('#goalId').value='';$('#goalCurrent').disabled=false;$('#goalModalTitle').textContent='Новая цель';$('#deleteGoal').hidden=true;openModal('goalModal')}else if(type==='plan')showScreen('plan');else if(type==='category'){$('#categoryForm').reset();$('#categoryId').value='';$('#categoryType').value=categoryTab;$('#categoryColor').value='#6756d9';$('#categoryModalTitle').textContent='Новая категория';$('#archiveCategory').hidden=true;openModal('categoryModal')}else openOperation(type)}if(e.target.closest('#addBudget')){$('#budgetForm').reset();$('#budgetId').value='';$('#budgetModalTitle').textContent='Распределить бюджет';fillCategories($('#budgetCategory'),'expense');$('#budgetCategory').disabled=false;$('#removeBudget').hidden=true;openModal('budgetModal')}if(e.target.closest('#editPlan')){$('#planIncome').value=getPlan().incomeTarget||availableNow();openModal('planModal')}if(e.target.closest('#prevPlanMonth')){const d=new Date(selectedPlanMonth+'-01T12:00:00');d.setMonth(d.getMonth()-1);selectedPlanMonth=monthKey(d);render()}if(e.target.closest('#nextPlanMonth')){const d=new Date(selectedPlanMonth+'-01T12:00:00');d.setMonth(d.getMonth()+1);selectedPlanMonth=monthKey(d);render()}const b=e.target.closest('[data-edit-budget]');if(b)editBudget(b.dataset.editBudget);const g=e.target.closest('[data-edit-goal]');if(g&&!e.target.closest('[data-goal-move]'))editGoal(g.dataset.editGoal);const move=e.target.closest('[data-goal-move]');if(move)openOperation(move.dataset.goalMove==='deposit'?'goal_deposit':'goal_withdrawal',{goalId:move.dataset.goalId});const c=e.target.closest('[data-edit-category]');if(c)editCategory(c.dataset.editCategory);const tab=e.target.closest('[data-category-type]');if(tab){categoryTab=tab.dataset.categoryType;renderCategories()}const historyTab=e.target.closest('[data-history-filter]');if(historyTab){historyFilter=historyTab.dataset.historyFilter;renderHistory()}const edit=e.target.closest('[data-edit-operation]');if(edit){const t=state.transactions.find(x=>String(x.id)===String(edit.dataset.editOperation));if(t)openOperation(t.type,t)}const del=e.target.closest('[data-delete-transaction]');if(del)deleteOperation(del.dataset.deleteTransaction);if(e.target.closest('.close-modal')||e.target===$('#modalBackdrop'))closeModal()});
+document.addEventListener('click',event=>{
+  if(event.target===$('#modalBackdrop')&&$('#openingBalanceModal').classList.contains('open'))event.stopImmediatePropagation();
+},true);
+document.addEventListener('click',event=>{
+  const edit=event.target.closest('[data-edit-opening-balance]');
+  if(edit)openOpeningBalanceModal(false);
+});
 document.addEventListener('click',event=>{const period=event.target.closest('[data-analytics-period]');if(period){analyticsPeriod=period.dataset.analyticsPeriod;analyticsSelectedBucketKey='';renderAnalytics();return}const bucket=event.target.closest('[data-analytics-bucket]');if(bucket){analyticsSelectedBucketKey=bucket.dataset.analyticsBucket;renderAnalytics();}});
 const today=nowFields();$('#todayLabel').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'}).toUpperCase();$('#operationDate').value=today.date;$('#operationTime').value=today.time;
 $('#operationForm').addEventListener('submit',e=>{e.preventDefault();const oldId=$('#operationId').value,old=state.transactions.find(t=>String(t.id)===oldId),type=$('#operationType').value;const t={id:old?old.id:Date.now(),type,category:type==='goal_deposit'||type==='goal_withdrawal'?undefined:$('#operationCategory').value,goalId:type==='goal_deposit'||type==='goal_withdrawal'?$('#operationCategory').value:undefined,amount:Number($('#operationAmount').value),comment:$('#operationComment').value,date:$('#operationDate').value,time:$('#operationTime').value};const completion=pendingPaymentCompletion;if(old)applyOperation(old,-1);applyOperation(t,1);if(old)state.transactions=state.transactions.map(x=>String(x.id)===String(old.id)?t:x);else state.transactions.unshift(t);closeModal();render();haptic();if(completion)completePlannedPaymentAfterOperation(completion)});
+$('#openingBalanceForm').addEventListener('submit',event=>{event.preventDefault();finishOpeningBalance($('#openingBalanceAmount').value)});
+$('#skipOpeningBalance').addEventListener('click',()=>finishOpeningBalance(0));
 $('#budgetForm').addEventListener('submit',e=>{e.preventDefault();const plan=getPlan(),id=$('#budgetCategory').value;plan.budgets[id]=Number($('#budgetAmount').value);plan.spent[id]??=0;closeModal();render();haptic()});$('#planForm').addEventListener('submit',e=>{e.preventDefault();getPlan().incomeTarget=Number($('#planIncome').value);closeModal();render();haptic()});
 $('#goalForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#goalId').value,data={title:$('#goalTitle').value,description:$('#goalDescription').value,target:Number($('#goalAmount').value),date:$('#goalDate').value};if(id)Object.assign(getGoal(id),data);else{const goal={id:Date.now(),emoji:'🎯',current:Number($('#goalCurrent').value||0),...data};state.goals.unshift(goal);if(goal.current){const fields=nowFields(),t={id:Date.now()+1,type:'goal_deposit',goalId:goal.id,amount:goal.current,comment:'Первоначальное накопление',...fields};state.transactions.unshift(t)}}closeModal();render();haptic()});
 $('#categoryForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#categoryId').value,data={type:$('#categoryType').value,emoji:$('#categoryEmoji').value,name:$('#categoryName').value,color:$('#categoryColor').value};if(id)Object.assign(getCategory(id),data);else state.categories.push({id:'cat-'+Date.now(),...data,spent:0,archived:false});closeModal();categoryTab=data.type;render();haptic()});$('#archiveCategory').addEventListener('click',()=>{const c=getCategory($('#categoryId').value);if(c){c.archived=true;closeModal();render();haptic()}});$('#removeBudget').addEventListener('click',()=>{const plan=getPlan(),id=$('#budgetId').value,c=getCategory(id);if(c&&confirm(`Убрать «${c.name}» из финансового плана?`)){delete plan.budgets[id];delete plan.spent[id];closeModal();render();haptic()}});$('#deleteGoal').addEventListener('click',()=>{const g=getGoal($('#goalId').value);if(g&&confirm(`Удалить цель «${g.title}»?`)){if(g.current){const fields=nowFields();state.transactions.unshift({id:Date.now(),type:'goal_withdrawal',goalId:g.id,amount:g.current,comment:'Закрытие цели',...fields})}state.goals=state.goals.filter(x=>x.id!==g.id);closeModal();render();haptic()}});
@@ -375,4 +442,4 @@ document.addEventListener('click',event=>{
 $('#plannedPaymentForm').addEventListener('submit',event=>{event.preventDefault();savePlannedPayment()});
 $('#deletePlannedPayment').addEventListener('click',event=>{event.preventDefault();deletePlannedPayment()});
 
-window.showKopilkaScreen=showScreen;window.closeKopilkaModal=closeModal;paymentUrlIntent=paymentUrlIntentFromLocation();render();hydrateRemote();loadPlannedPayments();
+window.showKopilkaScreen=showScreen;window.closeKopilkaModal=closeModal;paymentUrlIntent=paymentUrlIntentFromLocation();render();if(canSync())hydrateRemote();else maybeOpenOpeningBalance();loadPlannedPayments();

@@ -118,6 +118,19 @@
   </main>
 
   <div class="modal-backdrop" id="modalBackdrop"></div>
+  <section class="modal opening-balance-modal" id="openingBalanceModal" aria-modal="true" aria-labelledby="openingBalanceModalTitle" role="dialog">
+    <div class="modal-handle"></div>
+    <p class="eyebrow">НАЧАЛО УЧЁТА</p>
+    <h2 id="openingBalanceModalTitle">Начнём с текущего остатка</h2>
+    <p class="opening-balance-intro" id="openingBalanceIntro">Сколько у вас доступно сейчас?</p>
+    <form id="openingBalanceForm">
+      <label>Начальный баланс<div class="amount-input"><input id="openingBalanceAmount" type="number" min="0" step="1" inputmode="decimal" required placeholder="0" aria-describedby="openingBalanceHelp openingBalanceNotice"><span>₽</span></div></label>
+      <p class="opening-balance-help" id="openingBalanceHelp">Это не будет считаться доходом и не попадёт в аналитику.</p>
+      <p class="inline-notice form-notice" id="openingBalanceNotice" role="status" hidden></p>
+      <button class="primary-button" type="submit">Сохранить баланс</button>
+      <button class="opening-balance-skip" id="skipOpeningBalance" type="button">Оставить 0 ₽</button>
+    </form>
+  </section>
   <section class="modal" id="operationModal" aria-modal="true" role="dialog">
     <div class="modal-handle"></div><div class="modal-title"><h2 id="operationTitle">Новый расход</h2><button class="close-modal">×</button></div>
     <p class="inline-notice operation-context" id="operationContext" hidden></p>

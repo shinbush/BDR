@@ -61,10 +61,39 @@
     </section>
 
     <section id="stats" class="screen">
-      <div class="page-title"><div><p class="eyebrow">ЗА АВГУСТ</p><h1>Аналитика</h1></div></div>
-      <article class="chart-card"><div class="chart-header"><div><p>Расходы</p><strong id="analyticsExpense">41 580 ₽</strong></div><span class="chart-note">−12% к июлю</span></div><div class="chart" aria-label="График расходов"><i style="height:38%"></i><i style="height:62%"></i><i style="height:45%"></i><i style="height:79%"></i><i style="height:56%"></i><i style="height:90%"></i><i style="height:50%"></i></div><div class="chart-days"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div></article>
-      <div class="analytics-grid"><article><span>Больше всего</span><strong id="topCategory">🛒 Продукты</strong><small id="topCategoryAmount">16 840 ₽</small></article><article><span>В среднем в день</span><strong id="avgExpense">1 540 ₽</strong><small>расходов</small></article></div>
-      <div class="section-heading"><h2>Выполнение бюджета</h2></div><div id="analyticsBudget" class="analytics-budget"></div>
+      <div class="page-title"><div><p class="eyebrow" id="analyticsPeriodLabel">ТЕКУЩИЙ МЕСЯЦ</p><h1>Аналитика</h1></div></div>
+      <div class="filters analytics-periods" id="analyticsPeriods" aria-label="Период аналитики">
+        <button class="selected" type="button" data-analytics-period="current">Этот месяц</button>
+        <button type="button" data-analytics-period="previous">Прошлый</button>
+        <button type="button" data-analytics-period="quarter">3 месяца</button>
+      </div>
+
+      <article class="analytics-overview-card">
+        <div class="analytics-overview-head"><span id="analyticsRange">За период</span><small id="analyticsOperationsCount">0 операций</small></div>
+        <div class="analytics-totals">
+          <div><span>Доходы</span><strong id="analyticsIncome">0 ₽</strong></div>
+          <div><span>Расходы</span><strong id="analyticsExpense">0 ₽</strong></div>
+        </div>
+        <div class="analytics-net"><span>Разница</span><strong id="analyticsNet">0 ₽</strong></div>
+      </article>
+
+      <article class="chart-card analytics-chart-card">
+        <div class="chart-header"><div><p>Динамика доходов и расходов</p><strong id="analyticsChartTitle">По неделям</strong></div></div>
+        <div class="analytics-legend"><span><i class="income-dot"></i>Доходы</span><span><i class="expense-dot"></i>Расходы</span></div>
+        <div class="analytics-chart" id="analyticsChart" aria-label="График доходов и расходов"></div>
+        <div class="analytics-chart-labels" id="analyticsChartLabels"></div>
+        <p class="analytics-empty-chart" id="analyticsEmptyChart" hidden>За выбранный период пока нет доходов и расходов.</p>
+      </article>
+
+      <section class="analytics-comparison-section">
+        <div class="section-heading"><h2>Сравнение с прошлым периодом</h2></div>
+        <div class="analytics-comparison" id="analyticsComparison"></div>
+      </section>
+
+      <section class="analytics-warning-section" id="analyticsBudgetWarning" aria-live="polite"></section>
+
+      <div class="section-heading"><h2>Топ категорий расходов</h2></div>
+      <div id="analyticsTopCategories" class="analytics-top-categories"></div>
     </section>
 
     <section id="categories" class="screen">
@@ -82,7 +111,7 @@
     </section>
 
     <nav class="bottom-nav">
-      <button class="nav-item active" data-go="home"><span>⌂</span>Главная</button><button class="nav-item" data-go="plan"><span>▤</span>План</button><button class="nav-item" data-go="goals"><span>◎</span>Цели</button><button class="nav-item" data-go="history"><span>◷</span>История</button><button class="nav-item" data-go="categories"><span>☷</span>Категории</button>
+      <button class="nav-item active" data-go="home"><span>⌂</span>Главная</button><button class="nav-item" data-go="plan"><span>▤</span>План</button><button class="nav-item" data-go="goals"><span>◎</span>Цели</button><button class="nav-item" data-go="history"><span>◷</span>История</button><button class="nav-item" data-go="stats"><span>◔</span>Аналитика</button><button class="nav-item" data-go="categories"><span>☷</span>Категории</button>
     </nav>
   </main>
 

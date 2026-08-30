@@ -10,14 +10,14 @@ const defaults = {
 const $ = s => document.querySelector(s);
 const storageKey = window.TG?.storageKey || 'kopilka-data';
 let state = JSON.parse(localStorage.getItem(storageKey) || 'null') || structuredClone(defaults);
-let selectedPlanMonth = monthKey(new Date()), categoryTab = 'expense', historyFilter = 'all', remoteReady = false, syncTimer, stateSaveQueue = Promise.resolve();
+let selectedPlanMonth = monthKey(new Date()), categoryTab = 'expense', historyFilter = 'all', analyticsPeriod = 'current', remoteReady = false, syncTimer, stateSaveQueue = Promise.resolve();
 let plannedPayments = [], plannedPaymentsLoading = false, plannedPaymentsReady = false, pendingPaymentCompletion = null;
 let paymentUrlIntent = null;
 const money = n => new Intl.NumberFormat('ru-RU').format(Math.round(n || 0)) + ' ₽';
 const haptic = () => window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.('success');
 function monthKey(value) { const d = value instanceof Date ? value : new Date(value + 'T12:00:00'); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 function dateLabel(value) { return value ? `до ${new Date(value+'T12:00:00').toLocaleDateString('ru-RU',{month:'long',year:'numeric'})}` : 'Без срока'; }
-function nowFields() { const now=new Date(); return {date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5)}; }
+function nowFields() { const now=new Date(); return {date:`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`,time:now.toTimeString().slice(0,5)}; }
 function getCategory(id) { return state.categories.find(c => c.id === id); }
 function getGoal(id) { return state.goals.find(g => String(g.id) === String(id)); }
 function activeCategories(type) { return state.categories.filter(c => c.type === type && !c.archived); }
@@ -188,6 +188,149 @@ function applyOperation(t, direction) {
 function operationTarget(t){ if(t.type==='goal_deposit'||t.type==='goal_withdrawal'){const g=getGoal(t.goalId);return {emoji:g?.emoji||'🎯',name:g?.title||'Цель'}} const c=getCategory(t.category);return {emoji:c?.emoji||'💳',name:c?.name||'Операция'}; }
 function transactionHtml(t){const target=operationTarget(t), sign=['income','goal_withdrawal'].includes(t.type)?'+':'−';const kind=t.type==='income'?'income':t.type==='goal_withdrawal'?'income':'expense';const label=t.type==='goal_deposit'?'Пополнение цели':t.type==='goal_withdrawal'?'Снятие с цели':target.name;return `<div class="transaction"><span class="transaction-icon">${target.emoji}</span><div><div class="transaction-title">${t.comment||label}</div><div class="transaction-meta">${label} · ${new Date(t.date+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}${t.time?' · '+t.time:''}</div></div><span class="transaction-amount ${kind}">${sign}${money(t.amount)}</span><button class="edit-transaction" data-edit-operation="${t.id}" aria-label="Изменить операцию">✎</button><button class="delete-transaction" data-delete-transaction="${t.id}" aria-label="Удалить операцию">×</button></div>`}
 function renderHistory(){const types=historyFilter==='income'?['income','goal_withdrawal']:historyFilter==='expense'?['expense','goal_deposit']:null,list=types?state.transactions.filter(t=>types.includes(t.type)):state.transactions;$('#historyList').innerHTML=list.length?list.map((t,i)=>`${i===0||t.date!==list[i-1].date?`<div class="history-date">${new Date(t.date+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'long'})}</div>`:''}${transactionHtml(t)}`).join(''):'<p class="hint">Операций этого типа пока нет.</p>';document.querySelectorAll('[data-history-filter]').forEach(button=>button.classList.toggle('selected',button.dataset.historyFilter===historyFilter))}
+function localDay(value) { const date=new Date(`${value}T12:00:00`); return Number.isNaN(date.getTime())?null:date; }
+function addLocalDays(date, days) { return new Date(date.getFullYear(),date.getMonth(),date.getDate()+days,12); }
+function analyticsDateRangeLabel(start, end) {
+  const lastDay=addLocalDays(end,-1);
+  const options={day:'numeric',month:'long'};
+  if(start.getFullYear()===lastDay.getFullYear()&&start.getMonth()===lastDay.getMonth()) return `${start.getDate()}–${lastDay.toLocaleDateString('ru-RU',options)}`;
+  return `${start.toLocaleDateString('ru-RU',options)} — ${lastDay.toLocaleDateString('ru-RU',{...options,year:'numeric'})}`;
+}
+function analyticsBounds() {
+  const now=new Date(), today=new Date(now.getFullYear(),now.getMonth(),now.getDate(),12), currentStart=new Date(now.getFullYear(),now.getMonth(),1,12), currentEnd=addLocalDays(today,1);
+  let start=currentStart, end=currentEnd, previousStart=new Date(now.getFullYear(),now.getMonth()-1,1,12), previousEnd, eyebrow='ТЕКУЩИЙ МЕСЯЦ', chartTitle='По неделям';
+  const daysInPreviousMonth=new Date(now.getFullYear(),now.getMonth(),0).getDate();
+  previousEnd=new Date(now.getFullYear(),now.getMonth()-1,Math.min(today.getDate(),daysInPreviousMonth)+1,12);
+  if(analyticsPeriod==='previous') { start=new Date(now.getFullYear(),now.getMonth()-1,1,12); end=currentStart; previousStart=new Date(now.getFullYear(),now.getMonth()-2,1,12); previousEnd=start; eyebrow='ПРОШЛЫЙ МЕСЯЦ'; }
+  if(analyticsPeriod==='quarter') {
+    start=new Date(now.getFullYear(),now.getMonth()-2,1,12);
+    previousEnd=new Date(start);
+    previousStart=addLocalDays(start,-Math.round((end-start)/86400000));
+    eyebrow='ПОСЛЕДНИЕ 3 МЕСЯЦА'; chartTitle='По месяцам';
+  }
+  return {start,end,previousStart,previousEnd,eyebrow,chartTitle};
+}
+function transactionsForAnalytics(start, end) {
+  return state.transactions.filter(transaction=>{
+    if(!['income','expense'].includes(transaction.type)) return false;
+    const date=localDay(transaction.date);
+    return date&&date>=start&&date<end;
+  });
+}
+function analyticsTotals(transactions) {
+  return transactions.reduce((totals,transaction)=>{
+    const amount=Number(transaction.amount||0);
+    if(transaction.type==='income') totals.income+=amount;
+    if(transaction.type==='expense') totals.expense+=amount;
+    return totals;
+  },{income:0,expense:0});
+}
+function analyticsBuckets(bounds, transactions) {
+  const buckets=[];
+  if(analyticsPeriod==='quarter') {
+    for(let cursor=new Date(bounds.start.getFullYear(),bounds.start.getMonth(),1,12);cursor<bounds.end;cursor=new Date(cursor.getFullYear(),cursor.getMonth()+1,1,12)) {
+      const next=new Date(cursor.getFullYear(),cursor.getMonth()+1,1,12);
+      buckets.push({start:cursor,end:next<bounds.end?next:bounds.end,label:cursor.toLocaleDateString('ru-RU',{month:'short'}).replace('.',''),income:0,expense:0});
+    }
+  } else {
+    for(let cursor=new Date(bounds.start);cursor<bounds.end;cursor=addLocalDays(cursor,7)) {
+      const next=addLocalDays(cursor,7), end=next<bounds.end?next:bounds.end, last=addLocalDays(end,-1);
+      buckets.push({start:cursor,end,label:`${cursor.getDate()}–${last.getDate()}`,income:0,expense:0});
+    }
+  }
+  transactions.forEach(transaction=>{
+    const date=localDay(transaction.date), bucket=buckets.find(item=>date>=item.start&&date<item.end);
+    if(bucket) bucket[transaction.type]+=Number(transaction.amount||0);
+  });
+  return buckets;
+}
+function comparisonChange(current, previous, kind) {
+  if(!previous) return current?{label:'Новый',tone:'neutral'}:{label:'Нет данных',tone:'neutral'};
+  const delta=Math.round((current-previous)/previous*100);
+  if(!delta) return {label:'Без изменений',tone:'neutral'};
+  const improved=kind==='expense'?delta<0:delta>0;
+  return {label:`${delta>0?'+':''}${delta}%`,tone:improved?'good':'attention'};
+}
+function operationCountLabel(count) {
+  const value=Math.abs(Number(count)||0)%100, last=value%10;
+  if(value>10&&value<20) return 'операций';
+  if(last===1) return 'операция';
+  if(last>=2&&last<=4) return 'операции';
+  return 'операций';
+}
+function renderAnalyticsChart(bounds, transactions) {
+  const buckets=analyticsBuckets(bounds,transactions), maximum=Math.max(1,...buckets.flatMap(bucket=>[bucket.income,bucket.expense]));
+  const hasData=buckets.some(bucket=>bucket.income||bucket.expense);
+  $('#analyticsChartTitle').textContent=bounds.chartTitle;
+  $('#analyticsChart').innerHTML=buckets.map(bucket=>{
+    const incomeHeight=bucket.income?Math.max(5,Math.round(bucket.income/maximum*100)):0;
+    const expenseHeight=bucket.expense?Math.max(5,Math.round(bucket.expense/maximum*100)):0;
+    return `<div class="analytics-chart-group" aria-label="${escapeHtml(`${bucket.label}: доходы ${money(bucket.income)}, расходы ${money(bucket.expense)}`)}"><div class="analytics-chart-bars"><i class="analytics-chart-bar income" style="height:${incomeHeight}%"></i><i class="analytics-chart-bar expense" style="height:${expenseHeight}%"></i></div></div>`;
+  }).join('');
+  $('#analyticsChartLabels').innerHTML=buckets.map(bucket=>`<span>${escapeHtml(bucket.label)}</span>`).join('');
+  $('#analyticsEmptyChart').hidden=hasData;
+}
+function renderAnalyticsComparison(bounds, totals, previousTotals) {
+  const previousLabel=analyticsDateRangeLabel(bounds.previousStart,bounds.previousEnd);
+  const incomeChange=comparisonChange(totals.income,previousTotals.income,'income');
+  const expenseChange=comparisonChange(totals.expense,previousTotals.expense,'expense');
+  $('#analyticsComparison').innerHTML=`<p class="analytics-comparison-period">По сравнению с ${escapeHtml(previousLabel)}</p><div class="analytics-comparison-grid"><article><span>Доходы</span><strong>${money(totals.income)}</strong><small><b class="${incomeChange.tone}">${incomeChange.label}</b> · было ${money(previousTotals.income)}</small></article><article><span>Расходы</span><strong>${money(totals.expense)}</strong><small><b class="${expenseChange.tone}">${expenseChange.label}</b> · было ${money(previousTotals.expense)}</small></article></div>`;
+}
+function renderAnalyticsBudgetWarning(bounds, transactions) {
+  const host=$('#analyticsBudgetWarning');
+  if(analyticsPeriod==='quarter') {
+    host.innerHTML='<article class="analytics-budget-note"><strong>Контроль бюджета — по месяцам</strong><p>Выберите «Этот месяц» или «Прошлый», чтобы увидеть предупреждение по категориям.</p></article>';
+    return;
+  }
+  const plan=state.plans?.[monthKey(bounds.start)], budgets=plan?.budgets||{}, budgetIds=Object.keys(budgets);
+  if(!budgetIds.length) {
+    host.innerHTML='<article class="analytics-budget-note"><strong>Бюджет не настроен</strong><p>Добавьте категории в финансовый план, и здесь появится контроль перерасхода.</p></article>';
+    return;
+  }
+  const spentByCategory=transactions.filter(transaction=>transaction.type==='expense').reduce((map,transaction)=>{
+    map[transaction.category]=(map[transaction.category]||0)+Number(transaction.amount||0);
+    return map;
+  },{});
+  const alerts=budgetIds.map(id=>{
+    const budget=Math.max(0,Number(budgets[id]||0)), spent=Number(spentByCategory[id]||0), category=getCategory(id)||{emoji:'💳',name:'Удалённая категория'};
+    return {id,budget,spent,category,over:spent-budget,percent:budget?spent/budget*100:(spent?Infinity:0)};
+  }).filter(item=>item.over>0||item.percent>=80).sort((a,b)=>b.percent-a.percent);
+  if(!alerts.length) {
+    host.innerHTML='<article class="analytics-budget-note success"><strong>Бюджет под контролем</strong><p>Ни одна категория пока не приблизилась к лимиту.</p></article>';
+    return;
+  }
+  const hasOver=alerts.some(alert=>alert.over>0), hasExhausted=alerts.some(alert=>alert.over===0&&alert.percent>=100), shown=alerts.slice(0,3);
+  const details=shown.map(alert=>`<li><span>${escapeHtml(alert.category.emoji||'💳')} ${escapeHtml(alert.category.name)}</span><b>${alert.over>0?`+${money(alert.over)}`:alert.percent>=100?'Лимит исчерпан':`${Math.round(alert.percent)}%`}</b></li>`).join('');
+  const more=alerts.length>shown.length?`<p class="analytics-warning-more">Ещё категорий: ${alerts.length-shown.length}</p>`:'';
+  const title=hasOver?'Есть перерасход бюджета':hasExhausted?'Лимит бюджета исчерпан':'Бюджет почти исчерпан';
+  const description=hasOver?'Проверьте категории с превышенным лимитом.':hasExhausted?'Новые расходы в этих категориях приведут к перерасходу.':'В этих категориях осталось меньше 20% лимита.';
+  host.innerHTML=`<article class="analytics-budget-warning ${hasOver?'over':hasExhausted?'exhausted':'near'}"><div><span class="analytics-warning-icon">${hasOver?'!':'◷'}</span><div><strong>${title}</strong><p>${description}</p></div></div><ul>${details}</ul>${more}</article>`;
+}
+function renderAnalyticsTopCategories(transactions, expenseTotal) {
+  const byCategory=transactions.filter(transaction=>transaction.type==='expense').reduce((map,transaction)=>{
+    const id=transaction.category||'uncategorized'; map[id]=(map[id]||0)+Number(transaction.amount||0); return map;
+  },{});
+  const items=Object.entries(byCategory).map(([id,amount])=>({id,amount,category:getCategory(id)||{emoji:'💳',name:'Без категории'}})).sort((a,b)=>b.amount-a.amount).slice(0,3);
+  $('#analyticsTopCategories').innerHTML=items.length?items.map((item,index)=>{
+    const share=expenseTotal?Math.round(item.amount/expenseTotal*100):0;
+    return `<article class="analytics-top-row"><span class="analytics-top-rank">${index+1}</span><span class="analytics-top-emoji">${escapeHtml(item.category.emoji||'💳')}</span><div><strong>${escapeHtml(item.category.name)}</strong><small>${share}% всех расходов</small></div><b>${money(item.amount)}</b></article>`;
+  }).join(''):'<p class="hint">За выбранный период расходов по категориям пока нет.</p>';
+}
+function renderAnalytics() {
+  const bounds=analyticsBounds(), transactions=transactionsForAnalytics(bounds.start,bounds.end), previousTransactions=transactionsForAnalytics(bounds.previousStart,bounds.previousEnd), totals=analyticsTotals(transactions), previousTotals=analyticsTotals(previousTransactions), net=totals.income-totals.expense;
+  $('#analyticsPeriodLabel').textContent=bounds.eyebrow;
+  $('#analyticsRange').textContent=analyticsDateRangeLabel(bounds.start,bounds.end);
+  $('#analyticsOperationsCount').textContent=`${transactions.length} ${operationCountLabel(transactions.length)}`;
+  $('#analyticsIncome').textContent=money(totals.income);
+  $('#analyticsExpense').textContent=money(totals.expense);
+  $('#analyticsNet').textContent=`${net>0?'+':''}${money(net)}`;
+  $('#analyticsNet').classList.toggle('negative',net<0);
+  document.querySelectorAll('[data-analytics-period]').forEach(button=>button.classList.toggle('selected',button.dataset.analyticsPeriod===analyticsPeriod));
+  renderAnalyticsChart(bounds,transactions);
+  renderAnalyticsComparison(bounds,totals,previousTotals);
+  renderAnalyticsBudgetWarning(bounds,transactions);
+  renderAnalyticsTopCategories(transactions,totals.expense);
+}
 function render(){
   const available=availableNow(), plan=getPlan(), assigned=reserved(), unallocated=available-assigned, pct=available?Math.max(0,Math.round(assigned/available*100)):0;
   $('#balanceValue').textContent=money(available);$('#incomeSmall').textContent=money(state.income);$('#expenseSmall').textContent=money(expenses());$('#planUnallocated').textContent=money(unallocated);
@@ -195,10 +338,10 @@ function render(){
   $('#recentTransactions').innerHTML=state.transactions.slice(0,3).map(transactionHtml).join('');renderHistory();
   $('#budgetList').innerHTML=planCategories().map(c=>{const budget=Number(plan.budgets[c.id]||0),spent=Number(plan.spent[c.id]||0),percent=budget?Math.round(spent/budget*100):0,over=spent>budget;return `<article class="budget-item ${over?'over':''}" data-edit-budget="${c.id}"><div class="budget-row"><span class="budget-emoji">${c.emoji}</span><div><div class="budget-name">${c.name}</div><div class="budget-numbers">Потрачено ${money(spent)} из ${money(budget)}</div></div><div class="budget-remain">${money(budget-spent)}<small>${over?'Перерасход':percent+'% использовано'}</small></div></div><div class="budget-bar"><span style="width:${Math.min(percent,100)}%;background:${c.color||''}"></span></div></article>`}).join('')||'<p class="hint">В этом месяце ещё нет распределённых категорий.</p>';
   const total=state.goals.reduce((s,g)=>s+Number(g.current||0),0),target=state.goals.reduce((s,g)=>s+Number(g.target||0),0);$('#goalsTotal').textContent=money(total);$('.goals-total p').textContent=`Вы уже на ${target?Math.round(total/target*100):0}% пути к своим целям`;$('#goalsList').innerHTML=state.goals.map(g=>{const p=Math.min(100,Math.round(g.current/g.target*100));return `<article class="goal-card" data-edit-goal="${g.id}"><div class="goal-card-top"><div class="goal-title">${g.emoji||'🎯'} ${g.title}</div><div class="goal-amount">${p}%</div></div><div class="goal-info">${g.description?g.description+' · ':''}${money(g.current)} из ${money(g.target)}</div><div class="goal-info">${dateLabel(g.date)}</div><div class="goal-progress"><span style="width:${p}%"></span></div><div class="goal-actions"><button data-goal-move="deposit" data-goal-id="${g.id}">Пополнить</button><button data-goal-move="withdraw" data-goal-id="${g.id}">Снять</button></div></article>`}).join('');
-  const top=[...activeCategories('expense')].sort((a,b)=>(b.spent||0)-(a.spent||0))[0];$('#analyticsExpense').textContent=money(expenses());$('#topCategory').textContent=top?`${top.emoji} ${top.name}`:'—';$('#topCategoryAmount').textContent=top?money(top.spent):'0 ₽';$('#avgExpense').textContent=money(expenses()/27);$('#analyticsBudget').innerHTML=planCategories().filter(c=>plan.budgets[c.id]).map(c=>`<div class="analytics-row"><span>${c.emoji}</span><div><b>${c.name}</b><div class="budget-bar"><span style="width:${Math.min(100,plan.spent[c.id]/plan.budgets[c.id]*100)}%;background:${c.color}"></span></div></div><b>${Math.round(plan.spent[c.id]/plan.budgets[c.id]*100)}%</b></div>`).join('');renderCategories();renderPlannedPayments();save();
+  renderAnalytics();renderCategories();renderPlannedPayments();save();
 }
 function renderCategories(){const list=activeCategories(categoryTab);$('#categoryList').innerHTML=list.length?list.map(c=>`<article class="budget-item category-item" data-edit-category="${c.id}"><div class="budget-row"><span class="budget-emoji" style="background:${c.color}22">${c.emoji}</span><div><div class="budget-name">${c.name}</div><div class="budget-numbers">${c.type==='expense'?'Расходы и планирование':'Доходы'}</div></div><span class="category-edit">Изменить ›</span></div></article>`).join(''):'<p class="hint">Категорий пока нет. Создайте первую кнопкой «+».</p>';document.querySelectorAll('[data-category-type]').forEach(b=>b.classList.toggle('selected',b.dataset.categoryType===categoryTab))}
-function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===id));window.Telegram?.WebApp?.BackButton?.[id==='home'?'hide':'show']?.();window.scrollTo(0,0)}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===id));if(id==='stats')renderAnalytics();window.Telegram?.WebApp?.BackButton?.[id==='home'?'hide':'show']?.();window.scrollTo(0,0)}
 function closeModal(){document.querySelectorAll('.modal').forEach(x=>x.classList.remove('open'));$('#modalBackdrop').classList.remove('open');$('#operationContext').hidden=true;pendingPaymentCompletion=null;window.Telegram?.WebApp?.BackButton?.hide?.()}
 function openModal(id){closeModal();$('#'+id).classList.add('open');$('#modalBackdrop').classList.add('open');window.Telegram?.WebApp?.BackButton?.show?.()}
 function fillCategories(select,type,selected){select.innerHTML=activeCategories(type).map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}function fillGoals(select,selected){select.innerHTML=state.goals.map(g=>`<option value="${g.id}" ${String(g.id)===String(selected)?'selected':''}>${g.emoji||'🎯'} ${g.title}</option>`).join('')}
@@ -206,6 +349,7 @@ function openOperation(type,operation){const f=$('#operationForm');f.reset();$('
 function editBudget(id){const c=getCategory(id),plan=getPlan();$('#budgetId').value=c.id;$('#budgetModalTitle').textContent=`Бюджет: ${c.name}`;fillCategories($('#budgetCategory'),'expense',c.id);$('#budgetCategory').disabled=true;$('#budgetAmount').value=plan.budgets[c.id]||0;$('#removeBudget').hidden=false;openModal('budgetModal')}function editGoal(id){const g=getGoal(id);$('#goalModalTitle').textContent='Изменить цель';$('#goalId').value=g.id;$('#goalTitle').value=g.title;$('#goalDescription').value=g.description||'';$('#goalAmount').value=g.target;$('#goalCurrent').value=g.current;$('#goalCurrent').disabled=true;$('#goalDate').value=g.date||'';$('#deleteGoal').hidden=false;openModal('goalModal')}function editCategory(id){const c=getCategory(id);$('#categoryModalTitle').textContent='Изменить категорию';$('#categoryId').value=c.id;$('#categoryType').value=c.type;$('#categoryEmoji').value=c.emoji;$('#categoryName').value=c.name;$('#categoryColor').value=c.color||'#6756d9';$('#archiveCategory').hidden=false;openModal('categoryModal')}
 function deleteOperation(id){const t=state.transactions.find(x=>String(x.id)===String(id));if(!t||!confirm(`Удалить операцию на ${money(t.amount)}?`))return;applyOperation(t,-1);state.transactions=state.transactions.filter(x=>String(x.id)!==String(id));render();haptic()}
 document.addEventListener('click',e=>{const go=e.target.closest('[data-go]');if(go)showScreen(go.dataset.go);const action=e.target.closest('[data-action]');if(action){const type=action.dataset.action;if(type==='goal'){$('#goalForm').reset();$('#goalId').value='';$('#goalCurrent').disabled=false;$('#goalModalTitle').textContent='Новая цель';$('#deleteGoal').hidden=true;openModal('goalModal')}else if(type==='plan')showScreen('plan');else if(type==='category'){$('#categoryForm').reset();$('#categoryId').value='';$('#categoryType').value=categoryTab;$('#categoryColor').value='#6756d9';$('#categoryModalTitle').textContent='Новая категория';$('#archiveCategory').hidden=true;openModal('categoryModal')}else openOperation(type)}if(e.target.closest('#addBudget')){$('#budgetForm').reset();$('#budgetId').value='';$('#budgetModalTitle').textContent='Распределить бюджет';fillCategories($('#budgetCategory'),'expense');$('#budgetCategory').disabled=false;$('#removeBudget').hidden=true;openModal('budgetModal')}if(e.target.closest('#editPlan')){$('#planIncome').value=getPlan().incomeTarget||availableNow();openModal('planModal')}if(e.target.closest('#prevPlanMonth')){const d=new Date(selectedPlanMonth+'-01T12:00:00');d.setMonth(d.getMonth()-1);selectedPlanMonth=monthKey(d);render()}if(e.target.closest('#nextPlanMonth')){const d=new Date(selectedPlanMonth+'-01T12:00:00');d.setMonth(d.getMonth()+1);selectedPlanMonth=monthKey(d);render()}const b=e.target.closest('[data-edit-budget]');if(b)editBudget(b.dataset.editBudget);const g=e.target.closest('[data-edit-goal]');if(g&&!e.target.closest('[data-goal-move]'))editGoal(g.dataset.editGoal);const move=e.target.closest('[data-goal-move]');if(move)openOperation(move.dataset.goalMove==='deposit'?'goal_deposit':'goal_withdrawal',{goalId:move.dataset.goalId});const c=e.target.closest('[data-edit-category]');if(c)editCategory(c.dataset.editCategory);const tab=e.target.closest('[data-category-type]');if(tab){categoryTab=tab.dataset.categoryType;renderCategories()}const historyTab=e.target.closest('[data-history-filter]');if(historyTab){historyFilter=historyTab.dataset.historyFilter;renderHistory()}const edit=e.target.closest('[data-edit-operation]');if(edit){const t=state.transactions.find(x=>String(x.id)===String(edit.dataset.editOperation));if(t)openOperation(t.type,t)}const del=e.target.closest('[data-delete-transaction]');if(del)deleteOperation(del.dataset.deleteTransaction);if(e.target.closest('.close-modal')||e.target===$('#modalBackdrop'))closeModal()});
+document.addEventListener('click',event=>{const period=event.target.closest('[data-analytics-period]');if(period){analyticsPeriod=period.dataset.analyticsPeriod;renderAnalytics();}});
 const today=nowFields();$('#todayLabel').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'}).toUpperCase();$('#operationDate').value=today.date;$('#operationTime').value=today.time;
 $('#operationForm').addEventListener('submit',e=>{e.preventDefault();const oldId=$('#operationId').value,old=state.transactions.find(t=>String(t.id)===oldId),type=$('#operationType').value;const t={id:old?old.id:Date.now(),type,category:type==='goal_deposit'||type==='goal_withdrawal'?undefined:$('#operationCategory').value,goalId:type==='goal_deposit'||type==='goal_withdrawal'?$('#operationCategory').value:undefined,amount:Number($('#operationAmount').value),comment:$('#operationComment').value,date:$('#operationDate').value,time:$('#operationTime').value};const completion=pendingPaymentCompletion;if(old)applyOperation(old,-1);applyOperation(t,1);if(old)state.transactions=state.transactions.map(x=>String(x.id)===String(old.id)?t:x);else state.transactions.unshift(t);closeModal();render();haptic();if(completion)completePlannedPaymentAfterOperation(completion)});
 $('#budgetForm').addEventListener('submit',e=>{e.preventDefault();const plan=getPlan(),id=$('#budgetCategory').value;plan.budgets[id]=Number($('#budgetAmount').value);plan.spent[id]??=0;closeModal();render();haptic()});$('#planForm').addEventListener('submit',e=>{e.preventDefault();getPlan().incomeTarget=Number($('#planIncome').value);closeModal();render();haptic()});

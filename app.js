@@ -389,6 +389,11 @@ function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classL
 function closeModal(){document.querySelectorAll('.modal').forEach(x=>x.classList.remove('open'));$('#modalBackdrop').classList.remove('open');$('#operationContext').hidden=true;pendingPaymentCompletion=null;window.Telegram?.WebApp?.BackButton?.hide?.()}
 function openModal(id){closeModal();$('#'+id).classList.add('open');$('#modalBackdrop').classList.add('open');window.Telegram?.WebApp?.BackButton?.[id==='openingBalanceModal'?'hide':'show']?.()}
 function openingBalanceTransaction(){return state.transactions.find(t=>t.type==='opening_balance')}
+function chronologyKey(transaction){return `${transaction.date||'9999-12-31'}T${transaction.time||'00:00'}:${String(transaction.id)}`}
+function isFirstIncomeTransaction(transaction){
+  const firstIncome=[...state.transactions].filter(t=>t.type==='income').sort((a,b)=>chronologyKey(a).localeCompare(chronologyKey(b)))[0];
+  return String(firstIncome?.id)===String(transaction?.id);
+}
 function setOpeningBalanceNotice(message=''){const notice=$('#openingBalanceNotice');notice.textContent=message;notice.hidden=!message}
 function openOpeningBalanceModal(onboarding=false){
   const transaction=openingBalanceTransaction();
@@ -413,7 +418,39 @@ function finishOpeningBalance(amount){
 }
 function maybeOpenOpeningBalance(){if(!state.onboarding?.openingBalanceHandled)openOpeningBalanceModal(true)}
 function fillCategories(select,type,selected){select.innerHTML=activeCategories(type).map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}function fillGoals(select,selected){select.innerHTML=state.goals.map(g=>`<option value="${g.id}" ${String(g.id)===String(selected)?'selected':''}>${g.emoji||'🎯'} ${g.title}</option>`).join('')}
-function openOperation(type,operation){const f=$('#operationForm');f.reset();$('#operationId').value=operation?.id||'';$('#operationType').value=type;const isGoal=type==='goal_deposit'||type==='goal_withdrawal';$('#operationTitle').textContent=operation?'Изменить операцию':type==='income'?'Новый доход':type==='expense'?'Новый расход':type==='goal_deposit'?'Пополнить цель':'Снять с цели';$('#operationTargetLabel').childNodes[0].textContent=isGoal?'Цель': 'Категория';if(isGoal)fillGoals($('#operationCategory'),operation?.goalId);else fillCategories($('#operationCategory'),type,operation?.category);const now=nowFields();$('#operationAmount').value=operation?.amount||'';$('#operationComment').value=operation?.comment||'';$('#operationDate').value=operation?.date||now.date;$('#operationTime').value=operation?.time||now.time;openModal('operationModal')}
+function openOperation(type,operation){
+  const f=$('#operationForm');
+  f.reset();
+  $('#operationId').value=operation?.id||'';
+  $('#operationType').value=type;
+  const isGoal=type==='goal_deposit'||type==='goal_withdrawal';
+  $('#operationTitle').textContent=operation?'Изменить операцию':type==='income'?'Новый доход':type==='expense'?'Новый расход':type==='goal_deposit'?'Пополнить цель':'Снять с цели';
+  $('#operationTargetLabel').childNodes[0].textContent=isGoal?'Цель':'Категория';
+  if(isGoal)fillGoals($('#operationCategory'),operation?.goalId);else fillCategories($('#operationCategory'),type,operation?.category);
+  const now=nowFields();
+  $('#operationAmount').value=operation?.amount||'';
+  $('#operationComment').value=operation?.comment||'';
+  $('#operationDate').value=operation?.date||now.date;
+  $('#operationTime').value=operation?.time||now.time;
+  const canConvertToOpeningBalance=Boolean(operation&&type==='income'&&!openingBalanceTransaction()&&isFirstIncomeTransaction(operation));
+  $('#convertIncomeToOpeningBalance').hidden=!canConvertToOpeningBalance;
+  $('#convertIncomeToOpeningBalanceHint').hidden=!canConvertToOpeningBalance;
+  openModal('operationModal');
+}
+function convertIncomeToOpeningBalance(){
+  const income=state.transactions.find(t=>String(t.id)===String($('#operationId').value));
+  if(!income||income.type!=='income'||openingBalanceTransaction()||!isFirstIncomeTransaction(income))return;
+  const hasUnsavedChanges=Number($('#operationAmount').value)!==Number(income.amount||0)||$('#operationComment').value!==(income.comment||'')||$('#operationDate').value!==income.date||$('#operationTime').value!==(income.time||'')||$('#operationCategory').value!==(income.category||'');
+  if(hasUnsavedChanges){alert('Сначала сохраните изменения операции, затем откройте её снова и преобразуйте в стартовый баланс.');return}
+  if(!confirm(`Преобразовать доход ${money(income.amount)} в стартовый баланс? Доступно сейчас не изменится, но сумма перестанет считаться доходом и исчезнет из аналитики.`))return;
+  Object.assign(income,{type:'opening_balance',category:undefined,comment:'Начальный баланс'});
+  state.onboarding??={};
+  state.onboarding.openingBalanceHandled=true;
+  rebuildLedgerTotals();
+  closeModal();
+  render();
+  haptic();
+}
 function editBudget(id){const c=getCategory(id),plan=getPlan();$('#budgetId').value=c.id;$('#budgetModalTitle').textContent=`Бюджет: ${c.name}`;fillCategories($('#budgetCategory'),'expense',c.id);$('#budgetCategory').disabled=true;$('#budgetAmount').value=plan.budgets[c.id]||0;$('#removeBudget').hidden=false;openModal('budgetModal')}function editGoal(id){const g=getGoal(id);$('#goalModalTitle').textContent='Изменить цель';$('#goalId').value=g.id;$('#goalTitle').value=g.title;$('#goalDescription').value=g.description||'';$('#goalAmount').value=g.target;$('#goalCurrent').value=g.current;$('#goalCurrent').disabled=true;$('#goalDate').value=g.date||'';$('#deleteGoal').hidden=false;openModal('goalModal')}function editCategory(id){const c=getCategory(id);$('#categoryModalTitle').textContent='Изменить категорию';$('#categoryId').value=c.id;$('#categoryType').value=c.type;$('#categoryEmoji').value=c.emoji;$('#categoryName').value=c.name;$('#categoryColor').value=c.color||'#6756d9';$('#archiveCategory').hidden=false;openModal('categoryModal')}
 function deleteOperation(id){const t=state.transactions.find(x=>String(x.id)===String(id));if(!t||!confirm(`Удалить операцию на ${money(t.amount)}?`))return;applyOperation(t,-1);state.transactions=state.transactions.filter(x=>String(x.id)!==String(id));render();haptic()}
 document.addEventListener('click',e=>{const go=e.target.closest('[data-go]');if(go)showScreen(go.dataset.go);const action=e.target.closest('[data-action]');if(action){const type=action.dataset.action;if(type==='goal'){$('#goalForm').reset();$('#goalId').value='';$('#goalCurrent').disabled=false;$('#goalModalTitle').textContent='Новая цель';$('#deleteGoal').hidden=true;openModal('goalModal')}else if(type==='plan')showScreen('plan');else if(type==='category'){$('#categoryForm').reset();$('#categoryId').value='';$('#categoryType').value=categoryTab;$('#categoryColor').value='#6756d9';$('#categoryModalTitle').textContent='Новая категория';$('#archiveCategory').hidden=true;openModal('categoryModal')}else openOperation(type)}if(e.target.closest('#addBudget')){$('#budgetForm').reset();$('#budgetId').value='';$('#budgetModalTitle').textContent='Распределить бюджет';fillCategories($('#budgetCategory'),'expense');$('#budgetCategory').disabled=false;$('#removeBudget').hidden=true;openModal('budgetModal')}if(e.target.closest('#editPlan')){$('#planIncome').value=getPlan().incomeTarget||availableNow();openModal('planModal')}if(e.target.closest('#prevPlanMonth')){const d=new Date(selectedPlanMonth+'-01T12:00:00');d.setMonth(d.getMonth()-1);selectedPlanMonth=monthKey(d);render()}if(e.target.closest('#nextPlanMonth')){const d=new Date(selectedPlanMonth+'-01T12:00:00');d.setMonth(d.getMonth()+1);selectedPlanMonth=monthKey(d);render()}const b=e.target.closest('[data-edit-budget]');if(b)editBudget(b.dataset.editBudget);const g=e.target.closest('[data-edit-goal]');if(g&&!e.target.closest('[data-goal-move]'))editGoal(g.dataset.editGoal);const move=e.target.closest('[data-goal-move]');if(move)openOperation(move.dataset.goalMove==='deposit'?'goal_deposit':'goal_withdrawal',{goalId:move.dataset.goalId});const c=e.target.closest('[data-edit-category]');if(c)editCategory(c.dataset.editCategory);const tab=e.target.closest('[data-category-type]');if(tab){categoryTab=tab.dataset.categoryType;renderCategories()}const historyTab=e.target.closest('[data-history-filter]');if(historyTab){historyFilter=historyTab.dataset.historyFilter;renderHistory()}const edit=e.target.closest('[data-edit-operation]');if(edit){const t=state.transactions.find(x=>String(x.id)===String(edit.dataset.editOperation));if(t)openOperation(t.type,t)}const del=e.target.closest('[data-delete-transaction]');if(del)deleteOperation(del.dataset.deleteTransaction);if(e.target.closest('.close-modal')||e.target===$('#modalBackdrop'))closeModal()});
@@ -427,6 +464,7 @@ document.addEventListener('click',event=>{
 document.addEventListener('click',event=>{const period=event.target.closest('[data-analytics-period]');if(period){analyticsPeriod=period.dataset.analyticsPeriod;analyticsSelectedBucketKey='';renderAnalytics();return}const bucket=event.target.closest('[data-analytics-bucket]');if(bucket){analyticsSelectedBucketKey=bucket.dataset.analyticsBucket;renderAnalytics();}});
 const today=nowFields();$('#todayLabel').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'}).toUpperCase();$('#operationDate').value=today.date;$('#operationTime').value=today.time;
 $('#operationForm').addEventListener('submit',e=>{e.preventDefault();const oldId=$('#operationId').value,old=state.transactions.find(t=>String(t.id)===oldId),type=$('#operationType').value;const t={id:old?old.id:Date.now(),type,category:type==='goal_deposit'||type==='goal_withdrawal'?undefined:$('#operationCategory').value,goalId:type==='goal_deposit'||type==='goal_withdrawal'?$('#operationCategory').value:undefined,amount:Number($('#operationAmount').value),comment:$('#operationComment').value,date:$('#operationDate').value,time:$('#operationTime').value};const completion=pendingPaymentCompletion;if(old)applyOperation(old,-1);applyOperation(t,1);if(old)state.transactions=state.transactions.map(x=>String(x.id)===String(old.id)?t:x);else state.transactions.unshift(t);closeModal();render();haptic();if(completion)completePlannedPaymentAfterOperation(completion)});
+$('#convertIncomeToOpeningBalance').addEventListener('click',convertIncomeToOpeningBalance);
 $('#openingBalanceForm').addEventListener('submit',event=>{event.preventDefault();finishOpeningBalance($('#openingBalanceAmount').value)});
 $('#skipOpeningBalance').addEventListener('click',()=>finishOpeningBalance(0));
 $('#budgetForm').addEventListener('submit',e=>{e.preventDefault();const plan=getPlan(),id=$('#budgetCategory').value;plan.budgets[id]=Number($('#budgetAmount').value);plan.spent[id]??=0;closeModal();render();haptic()});$('#planForm').addEventListener('submit',e=>{e.preventDefault();getPlan().incomeTarget=Number($('#planIncome').value);closeModal();render();haptic()});

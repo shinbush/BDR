@@ -12,7 +12,8 @@ const $ = s => document.querySelector(s);
 const storageKey = window.TG?.storageKey || 'kopilka-data';
 let state = JSON.parse(localStorage.getItem(storageKey) || 'null') || structuredClone(defaults);
 let selectedPlanMonth = monthKey(new Date()), categoryTab = 'expense', historyFilter = 'all', analyticsPeriod = 'current', analyticsSelectedBucketKey = '', remoteReady = false, syncTimer, stateSaveQueue = Promise.resolve();
-let plannedPayments = [], plannedPaymentsLoading = false, plannedPaymentsReady = false, pendingPaymentCompletion = null;
+let plannedPayments = [], plannedPaymentsLoading = false, plannedPaymentsReady = false, plannedPaymentsUnavailable = false, pendingPaymentCompletion = null;
+let plannedPaymentsForecast = null, plannedPaymentsForecastLoading = false, plannedPaymentsForecastReady = false, plannedPaymentsForecastUnavailable = false;
 let paymentUrlIntent = null;
 const money = n => new Intl.NumberFormat('ru-RU').format(Math.round(n || 0)) + ' ₽';
 const haptic = () => window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.('success');
@@ -104,6 +105,53 @@ function normalizePayment(payment) { return {...payment,amount:Number(payment.am
 function readLocalPayments() { try { const items=JSON.parse(localStorage.getItem(paymentStorageKey)||'[]'); return Array.isArray(items)?items.map(normalizePayment):[]; } catch { return []; } }
 function writeLocalPayments() { localStorage.setItem(paymentStorageKey,JSON.stringify(plannedPayments)); }
 function nextPaymentTime(payment, mode='advance') { const base=new Date(Math.max(Date.now(),epochMilliseconds(payment.next_reminder_at)||Date.now())); if(mode==='postpone') { base.setDate(base.getDate()+1); return base.getTime(); } if(payment.cadence==='weekly') base.setDate(base.getDate()+7); else if(payment.cadence==='yearly') base.setFullYear(base.getFullYear()+1); else base.setMonth(base.getMonth()+1); return base.getTime(); }
+function safeSpendingCutoff() { const now=new Date(); return new Date(now.getFullYear(),now.getMonth()+1,1).getTime(); }
+function safeSpendingUntilLabel(cutoff=safeSpendingCutoff()) { return `до ${new Date(cutoff-1).toLocaleDateString('ru-RU',{day:'numeric',month:'long'})}`; }
+function nextLocalForecastPaymentTime(payment, timestamp) {
+  const current=new Date(timestamp),[hour,minute]=(payment.time_local||localTimeInput(timestamp,'09:00')).split(':').map(Number),anchorDay=Number(payment.anchor_day)||current.getDate();
+  if(payment.cadence==='weekly') return new Date(current.getFullYear(),current.getMonth(),current.getDate()+7,hour,minute).getTime();
+  if(payment.cadence==='yearly') { const year=current.getFullYear()+1,month=current.getMonth(); return new Date(year,month,Math.min(anchorDay,new Date(year,month+1,0).getDate()),hour,minute).getTime(); }
+  const year=current.getFullYear(),month=current.getMonth()+1;
+  return new Date(year,month,Math.min(anchorDay,new Date(year,month+1,0).getDate()),hour,minute).getTime();
+}
+function localPaymentForecast(until=safeSpendingCutoff(), now=Date.now()) {
+  const byCategory={}, occurrences=[];
+  sortedPayments().forEach(payment=>{
+    let occurrence=epochMilliseconds(payment.next_reminder_at), guard=0;
+    if(!Number.isFinite(occurrence)||occurrence>=until)return;
+    // A missed reminder is one unresolved payment, not every missed weekly/monthly interval.
+    if(occurrence<=now) {
+      occurrences.push({category_id:payment.category_id,amount:Number(payment.amount||0)});
+      do { const next=nextLocalForecastPaymentTime(payment,occurrence); if(next<=occurrence)break; occurrence=next; guard+=1; } while(occurrence<=now&&guard<5200);
+    }
+    while(occurrence<until&&guard<5220) {
+      occurrences.push({category_id:payment.category_id,amount:Number(payment.amount||0)});
+      const next=nextLocalForecastPaymentTime(payment,occurrence); if(next<=occurrence)break; occurrence=next; guard+=1;
+    }
+  });
+  occurrences.forEach(item=>{byCategory[item.category_id]=(byCategory[item.category_id]||0)+item.amount});
+  return {total:occurrences.reduce((sum,item)=>sum+item.amount,0),byCategory,count:occurrences.length};
+}
+function normalizePaymentForecast(payload) {
+  const source=payload?.by_category&&typeof payload.by_category==='object'?payload.by_category:{};
+  const byCategory=Object.fromEntries(Object.entries(source).map(([id,value])=>[id,Math.max(0,Number(value)||0)]));
+  return {total:Math.max(0,Number(payload?.total)||0),byCategory,count:Math.max(0,Number(payload?.occurrence_count)||0)};
+}
+async function loadPlannedPaymentsForecast() {
+  const until=safeSpendingCutoff();
+  plannedPaymentsForecastLoading=true; plannedPaymentsForecastUnavailable=false; renderSafeSpending();
+  if(!canSync()) {
+    plannedPaymentsForecast=localPaymentForecast(until); plannedPaymentsForecastReady=true; plannedPaymentsForecastLoading=false; renderSafeSpending(); return;
+  }
+  try {
+    plannedPaymentsForecast=normalizePaymentForecast(await apiFetch(`/api/planned-payments/forecast?until=${encodeURIComponent(until)}`));
+    plannedPaymentsForecastReady=true;
+  } catch {
+    plannedPaymentsForecast=null; plannedPaymentsForecastReady=true; plannedPaymentsForecastUnavailable=true;
+  } finally {
+    plannedPaymentsForecastLoading=false; renderSafeSpending();
+  }
+}
 function paymentDateText(payment) { const date=new Date(epochMilliseconds(payment.next_reminder_at)); if(Number.isNaN(date.getTime())) return 'Дата напоминания не задана'; const day=date.toLocaleDateString('ru-RU',{day:'numeric',month:'long'}); return `Следующее: ${day} · ${payment.time_local || localTimeInput(payment.next_reminder_at)}`; }
 function paymentStatusText(payment) { return payment.open_reminder_id ? 'Ждёт вашего решения' : 'Запланирован'; }
 function paymentCategory(payment) { return getCategory(payment.category_id) || {emoji:'💳',name:'Категория удалена',color:'#8f98a9'}; }
@@ -124,21 +172,70 @@ function plannedPaymentCard(payment, compact=false) {
   </article>`;
 }
 function renderPlannedPayments() {
+  renderSafeSpending();
   const upcoming=$('#upcomingPayments'), list=$('#plannedPaymentsList'); if(!upcoming||!list)return;
   const payments=sortedPayments();
   if(plannedPaymentsLoading&&!plannedPaymentsReady) { upcoming.innerHTML='<p class="hint">Загружаем напоминания…</p>'; list.innerHTML='<p class="hint">Загружаем напоминания…</p>'; return; }
   upcoming.innerHTML=payments.length?payments.slice(0,3).map(payment=>plannedPaymentCard(payment,true)).join(''):'<button class="empty-planned-payments" type="button" data-go="payments">Добавьте напоминание о регулярном платеже</button>';
   list.innerHTML=payments.length?payments.map(payment=>plannedPaymentCard(payment)).join(''):'<div class="empty-planned-payments-card"><b>Плановых платежей пока нет</b><p>Создайте напоминание, чтобы не забыть о важных оплатах.</p><button class="text-button" type="button" id="emptyAddPlannedPayment">Добавить</button></div>';
 }
+function currentMonthPlanForSafeSpending() {
+  return state.plans?.[monthKey(new Date())] || {budgets:{},spent:{}};
+}
+function safeSpendingDetails(forecast) {
+  const plan=currentMonthPlanForSafeSpending(), paymentByCategory=forecast?.byCategory||{}, remainingByCategory={};
+  Object.keys(plan.budgets||{}).forEach(id=>{
+    remainingByCategory[id]=Math.max(0,Number(plan.budgets[id]||0)-Number(plan.spent?.[id]||0));
+  });
+  const budgetExtra=Object.entries(remainingByCategory).reduce((sum,[id,remaining])=>sum+Math.max(0,remaining-Number(paymentByCategory[id]||0)),0);
+  const planned=Math.max(0,Number(forecast?.total||0)), available=availableNow(), goalReserve=Math.max(0,goalNet());
+  return {available,planned,budgetExtra,goalReserve,free:available-planned-budgetExtra};
+}
+function renderSafeSpending() {
+  const card=$('#safeSpendingCard'); if(!card)return;
+  const title=$('#safeSpendingTitle'),value=$('#safeSpendingValue'),subtitle=$('#safeSpendingSubtitle'),breakdown=$('#safeSpendingBreakdown'),note=$('#safeSpendingNote'),link=$('#safeSpendingLink');
+  const waitingForPayments=plannedPaymentsLoading&&!plannedPaymentsReady;
+  const waitingForForecast=plannedPaymentsForecastLoading&&!plannedPaymentsForecastReady;
+  card.classList.remove('negative','unavailable');
+  if(waitingForPayments||waitingForForecast||(!plannedPaymentsReady&&!plannedPaymentsForecastReady)) {
+    title.textContent='Рассчитываем свободную сумму'; value.textContent='…'; subtitle.textContent='Проверяем план и напоминания до конца месяца.';
+    breakdown.innerHTML='<div class="safe-spending-loading">Это займёт несколько секунд.</div>'; note.textContent=''; link.hidden=true; return;
+  }
+  if(plannedPaymentsUnavailable||plannedPaymentsForecastUnavailable) {
+    card.classList.add('unavailable'); title.textContent='Не удалось учесть напоминания'; value.textContent='—';
+    subtitle.textContent='Проверьте подключение и откройте приложение ещё раз.';
+    breakdown.innerHTML='<div class="safe-spending-loading">Свободную сумму пока нельзя подтвердить.</div>';
+    note.textContent='Баланс и операции не изменились.'; link.hidden=false; link.textContent='Открыть напоминания'; return;
+  }
+  const forecast=canSync()?plannedPaymentsForecast:localPaymentForecast(), details=safeSpendingDetails(forecast), until=safeSpendingUntilLabel();
+  const noReserves=!details.planned&&!details.budgetExtra;
+  if(details.free<0) { title.textContent='Свободных денег не хватает'; subtitle.textContent=`Чтобы покрыть планы и напоминания ${until}, не хватает ${money(Math.abs(details.free))}.`; card.classList.add('negative'); }
+  else if(details.free===0&&details.available===0&&noReserves) { title.textContent='Пока нет свободных денег'; subtitle.textContent='Добавьте стартовый баланс или первый доход.'; }
+  else if(details.free===0) { title.textContent='Весь остаток уже распределён'; subtitle.textContent=`Планы и напоминания ${until} покрывают весь доступный остаток.`; }
+  else if(noReserves) { title.textContent='Можно свободно потратить'; subtitle.textContent=`Планов и напоминаний ${until} пока нет.`; }
+  else { title.textContent='Можно свободно потратить'; subtitle.textContent=`После планов и напоминаний ${until}.`; }
+  value.textContent=money(details.free);
+  breakdown.innerHTML=`
+    <div class="safe-spending-row"><span>Доступно сейчас</span><b>${money(details.available)}</b></div>
+    <div class="safe-spending-row deduction"><span>Напоминания ${until}</span><b>−${money(details.planned)}</b></div>
+    <div class="safe-spending-row deduction"><span>Резерв по бюджету</span><b>−${money(details.budgetExtra)}</b></div>
+    ${details.goalReserve?`<div class="safe-spending-row context"><span>Уже в целях <small>уже исключено из доступного</small></span><b>${money(details.goalReserve)}</b></div>`:''}
+    <div class="safe-spending-divider"></div>
+    <div class="safe-spending-row result"><span>Свободно потратить</span><b>${money(details.free)}</b></div>`;
+  note.textContent='Это прогноз: деньги не списываются автоматически. Напоминания, уже покрытые бюджетом, дважды не учитываются.';
+  link.hidden=false; link.textContent=details.planned?'Посмотреть напоминания':'Добавить напоминание';
+}
 function paymentUrlIntentFromLocation() { const params=new URLSearchParams(window.location.search); const paymentId=params.get('payment'); return paymentId?{paymentId,reminderId:params.get('reminder')||''}:null; }
 function clearPaymentUrlIntent() { try { const url=new URL(window.location.href); url.searchParams.delete('payment'); url.searchParams.delete('reminder'); window.history.replaceState({},'',`${url.pathname}${url.search}${url.hash}`); } catch {} }
 function consumePaymentUrlIntent() { if(!paymentUrlIntent)return; const payment=plannedPayments.find(item=>String(item.id)===String(paymentUrlIntent.paymentId)); if(!payment)return; const intent=paymentUrlIntent; paymentUrlIntent=null; clearPaymentUrlIntent(); showScreen('payments'); openPlannedPaymentExpense(payment.id,intent.reminderId); }
 async function loadPlannedPayments() {
-  plannedPaymentsLoading=true; renderPlannedPayments();
-  if(!canSync()) { plannedPayments=readLocalPayments(); plannedPaymentsReady=true; plannedPaymentsLoading=false; renderPlannedPayments(); consumePaymentUrlIntent(); return; }
+  plannedPaymentsLoading=true; plannedPaymentsUnavailable=false; renderPlannedPayments();
+  if(!canSync()) { plannedPayments=readLocalPayments(); plannedPaymentsReady=true; plannedPaymentsLoading=false; renderPlannedPayments(); await loadPlannedPaymentsForecast(); consumePaymentUrlIntent(); return; }
   try { const payload=await apiFetch('/api/planned-payments'); plannedPayments=Array.isArray(payload?.payments)?payload.payments.map(normalizePayment):[]; plannedPaymentsReady=true; }
-  catch(error) { if(!plannedPaymentsReady)plannedPayments=[]; plannedPaymentsReady=true; setPlannedPaymentsNotice(`Не удалось загрузить напоминания: ${error.message}`, 'error'); }
-  finally { plannedPaymentsLoading=false; renderPlannedPayments(); consumePaymentUrlIntent(); }
+  catch(error) { if(!plannedPaymentsReady)plannedPayments=[]; plannedPaymentsReady=true; plannedPaymentsUnavailable=true; setPlannedPaymentsNotice(`Не удалось загрузить напоминания: ${error.message}`, 'error'); }
+  finally { plannedPaymentsLoading=false; renderPlannedPayments(); }
+  await loadPlannedPaymentsForecast();
+  consumePaymentUrlIntent();
 }
 function fillPlannedPaymentCategories(selected) {
   const select=$('#plannedPaymentCategory'); const categories=activeCategories('expense').slice(); const current=getCategory(selected);

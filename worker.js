@@ -2,6 +2,8 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DELIVERY_LEASE_MS = 5 * 60 * 1000;
+const MAX_PAYMENT_FORECAST_HORIZON_MS = 370 * DAY_MS;
+const MAX_PAYMENT_FORECAST_OCCURRENCES = 64;
 const MAX_STATE_BYTES = 900_000;
 const MAX_PAYMENT_BYTES = 12_000;
 const MAX_WEBHOOK_BYTES = 128_000;
@@ -255,23 +257,87 @@ function daysInMonth(year, month) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
-function nextOccurrenceAt(payment) {
-  const local = zonedParts(Number(payment.next_reminder_at), payment.timezone);
+function occurrenceAfter(payment, occurrenceAt, intervals = 1) {
+  const local = zonedParts(Number(occurrenceAt), payment.timezone);
   const [hour, minute] = payment.time_local.split(':').map(Number);
   const anchorDay = Number(payment.anchor_day) || local.day;
+  const count = Math.max(1, Math.floor(Number(intervals) || 1));
   let target;
   if (payment.cadence === 'weekly') {
-    target = addDays(local.year, local.month, local.day, 7);
+    target = addDays(local.year, local.month, local.day, 7 * count);
   } else if (payment.cadence === 'monthly') {
-    const absoluteMonth = local.year * 12 + (local.month - 1) + 1;
+    const absoluteMonth = local.year * 12 + (local.month - 1) + count;
     const year = Math.floor(absoluteMonth / 12);
     const month = absoluteMonth % 12 + 1;
     target = { year, month, day: Math.min(anchorDay, daysInMonth(year, month)) };
   } else {
-    const year = local.year + 1;
+    const year = local.year + count;
     target = { year, month: local.month, day: Math.min(anchorDay, daysInMonth(year, local.month)) };
   }
   return zonedDateTimeToEpoch({ ...target, hour, minute }, payment.timezone);
+}
+
+function nextOccurrenceAt(payment) {
+  return occurrenceAfter(payment, payment.next_reminder_at);
+}
+
+function firstFutureOccurrence(payment, occurrenceAt, now) {
+  const occurrenceLocal = zonedParts(occurrenceAt, payment.timezone);
+  const nowLocal = zonedParts(now, payment.timezone);
+  let intervals = 1;
+  if (payment.cadence === 'weekly') {
+    const occurrenceDay = Date.UTC(occurrenceLocal.year, occurrenceLocal.month - 1, occurrenceLocal.day);
+    const nowDay = Date.UTC(nowLocal.year, nowLocal.month - 1, nowLocal.day);
+    intervals = Math.max(1, Math.floor((nowDay - occurrenceDay) / (7 * DAY_MS)));
+  } else if (payment.cadence === 'monthly') {
+    intervals = Math.max(1, (nowLocal.year - occurrenceLocal.year) * 12 + nowLocal.month - occurrenceLocal.month);
+  } else {
+    intervals = Math.max(1, nowLocal.year - occurrenceLocal.year);
+  }
+  let future = occurrenceAfter(payment, occurrenceAt, intervals);
+  while (future <= now) future = occurrenceAfter(payment, future);
+  return future;
+}
+
+function paymentForecastCutoff(url) {
+  const until = Number(url.searchParams.get('until'));
+  const now = Date.now();
+  if (!Number.isSafeInteger(until) || until <= now || until > now + MAX_PAYMENT_FORECAST_HORIZON_MS) {
+    throw requestError('Invalid payment forecast cutoff');
+  }
+  return until;
+}
+
+function forecastPaymentOccurrences(payment, until, now) {
+  let occurrenceAt = Number(payment.next_reminder_at);
+  if (!Number.isSafeInteger(occurrenceAt) || occurrenceAt >= until) return [];
+  const occurrences = [];
+  // The server never advances a schedule while its due reminder is unresolved.
+  // Reserve that overdue item once, then forecast only upcoming occurrences.
+  if (occurrenceAt <= now) {
+    occurrences.push({ payment_id: payment.id, category_id: payment.category_id, amount: Number(payment.amount), occurrence_at: occurrenceAt, overdue: true });
+    occurrenceAt = firstFutureOccurrence(payment, occurrenceAt, now);
+  }
+  while (occurrenceAt < until && occurrences.length < MAX_PAYMENT_FORECAST_OCCURRENCES) {
+    occurrences.push({ payment_id: payment.id, category_id: payment.category_id, amount: Number(payment.amount), occurrence_at: occurrenceAt, overdue: false });
+    occurrenceAt = occurrenceAfter(payment, occurrenceAt);
+  }
+  return occurrences;
+}
+
+async function forecastPayments(env, telegramId, until) {
+  const now = Date.now();
+  const occurrences = (await listPayments(env, telegramId)).flatMap(payment => forecastPaymentOccurrences(payment, until, now));
+  const byCategory = {};
+  let total = 0;
+  let overdueCount = 0;
+  for (const occurrence of occurrences) {
+    const amount = Math.max(0, Number(occurrence.amount) || 0);
+    total += amount;
+    byCategory[occurrence.category_id] = (byCategory[occurrence.category_id] || 0) + amount;
+    if (occurrence.overdue) overdueCount += 1;
+  }
+  return { until, generated_at: now, total, by_category: byCategory, occurrence_count: occurrences.length, overdue_count: overdueCount };
 }
 
 function tomorrowAtLocalTime(payment) {
@@ -664,6 +730,11 @@ async function handleApi(request, env, user, url) {
     if (request.method === 'GET') return json({ payments: await listPayments(env, telegramId) });
     if (request.method === 'POST') return json({ payment: await createPayment(env, telegramId, await readJson(request, MAX_PAYMENT_BYTES)) }, 201);
     return json({ error: 'Method not allowed' }, 405);
+  }
+
+  if (url.pathname === '/api/planned-payments/forecast') {
+    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+    return json(await forecastPayments(env, telegramId, paymentForecastCutoff(url)));
   }
 
   const match = /^\/api\/planned-payments\/([0-9a-f-]{36})(?:\/(complete|postpone|skip))?$/i.exec(url.pathname);

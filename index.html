@@ -21,23 +21,30 @@
 
     <section id="home" class="screen active">
       <div class="greeting"><p class="eyebrow" id="todayLabel">ПОНЕДЕЛЬНИК, 24 АВГУСТА</p><h1 id="greetingTitle">Добрый вечер</h1></div>
-      <article class="balance-card">
-        <div class="balance-top"><span>Доступно сейчас</span><span class="change">↗ 8,4%</span></div>
-        <div class="balance-value" id="balanceValue">86 420 ₽</div>
-        <div class="balance-breakdown"><span>Доходы <b id="incomeSmall">128 000 ₽</b></span><span>Расходы <b id="expenseSmall">41 580 ₽</b></span></div>
-        <div class="balance-dots"><i></i><i></i><i class="active-dot"></i></div>
-      </article>
+      <article class="balance-card" id="balanceCarousel" aria-label="Сводка по деньгам">
+        <div class="balance-slides" id="balanceSlides">
+            <section class="balance-slide" aria-label="Доступно сейчас">
+              <div class="balance-top"><span>Доступно сейчас</span><span class="change">↗ 8,4%</span></div>
+              <div class="balance-value" id="balanceValue">86 420 ₽</div>
+              <div class="balance-breakdown"><span>Доходы <b id="incomeSmall">128 000 ₽</b></span><span>Расходы <b id="expenseSmall">41 580 ₽</b></span></div>
+            </section>
 
-      <article class="safe-spending-card" id="safeSpendingCard" aria-live="polite">
-        <p class="eyebrow">ДЕНЬГИ ДО КОНЦА МЕСЯЦА</p>
-        <div class="safe-spending-heading">
-          <div><p class="safe-spending-title" id="safeSpendingTitle">Рассчитываем свободную сумму</p><strong class="safe-spending-value" id="safeSpendingValue">…</strong></div>
-          <span class="safe-spending-icon" aria-hidden="true">✦</span>
+            <section class="balance-slide safe-spending-slide" id="safeSpendingCard" aria-label="Деньги до конца месяца" aria-live="polite">
+              <div class="balance-top"><span>Деньги до конца месяца</span><span class="balance-slide-badge">Прогноз</span></div>
+              <div class="safe-spending-heading">
+                <div><p class="safe-spending-title" id="safeSpendingTitle">Рассчитываем свободную сумму</p><strong class="safe-spending-value" id="safeSpendingValue">…</strong></div>
+                <span class="safe-spending-icon" aria-hidden="true">✦</span>
+              </div>
+              <p class="safe-spending-subtitle" id="safeSpendingSubtitle">Проверяем план и напоминания.</p>
+              <div class="safe-spending-breakdown" id="safeSpendingBreakdown"></div>
+              <p class="safe-spending-note" id="safeSpendingNote"></p>
+              <button class="safe-spending-link" id="safeSpendingLink" type="button" data-go="payments" hidden>Посмотреть напоминания</button>
+            </section>
         </div>
-        <p class="safe-spending-subtitle" id="safeSpendingSubtitle">Проверяем план и напоминания.</p>
-        <div class="safe-spending-breakdown" id="safeSpendingBreakdown"></div>
-        <p class="safe-spending-note" id="safeSpendingNote"></p>
-        <button class="safe-spending-link" id="safeSpendingLink" type="button" data-go="payments" hidden>Посмотреть напоминания</button>
+        <div class="balance-dots" role="tablist" aria-label="Карточки баланса">
+          <button class="balance-dot active-dot" type="button" role="tab" data-balance-slide="0" aria-label="Доступно сейчас" aria-selected="true"></button>
+          <button class="balance-dot" type="button" role="tab" data-balance-slide="1" aria-label="Деньги до конца месяца" aria-selected="false"></button>
+        </div>
       </article>
 
       <div class="section-heading"><h2>Быстрые действия</h2></div>

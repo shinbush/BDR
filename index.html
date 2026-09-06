@@ -20,11 +20,11 @@
     </header>
 
     <section id="home" class="screen active">
-      <div class="greeting"><p class="eyebrow" id="todayLabel">ПОНЕДЕЛЬНИК, 24 АВГУСТА</p><h1 id="greetingTitle">Добрый вечер</h1></div>
+      <p class="eyebrow home-date" id="todayLabel" hidden></p>
       <article class="balance-card" id="balanceCarousel" aria-label="Сводка по деньгам">
         <div class="balance-slides" id="balanceSlides">
             <section class="balance-slide" aria-label="Доступно сейчас">
-              <div class="balance-top"><span>Доступно сейчас</span><span class="change">↗ 8,4%</span></div>
+              <div class="balance-top"><span>Доступно сейчас</span><span class="change">За всё время</span></div>
               <div class="balance-value" id="balanceValue">86 420 ₽</div>
               <div class="balance-breakdown"><span>Доходы <b id="incomeSmall">128 000 ₽</b></span><span>Расходы <b id="expenseSmall">41 580 ₽</b></span></div>
             </section>
@@ -47,17 +47,14 @@
         </div>
       </article>
 
-      <div class="section-heading"><h2>Быстрые действия</h2></div>
-      <div class="quick-actions quick-actions-two">
-        <button class="quick income" data-action="income"><span>+</span>Доход</button>
-        <button class="quick expense" data-action="expense"><span>−</span>Расход</button>
-      </div>
-
-      <div class="section-heading"><h2>Ближайшие платежи</h2><button class="text-button" data-go="payments">Все</button></div>
       <div class="planned-payments-preview" id="upcomingPayments"></div>
-
-      <div class="section-heading"><h2>Последние операции</h2><button class="text-button" data-go="history">Все</button></div>
-      <div class="transaction-list" id="recentTransactions"></div>
+      <section class="home-ledger" aria-label="Лента операций">
+        <div class="section-heading ledger-heading"><h1>Операции</h1><div class="ledger-tools"><button id="toggleLedgerSearch" type="button" class="ledger-search-toggle" aria-label="Поиск операций" aria-expanded="false" aria-controls="ledgerSearchField">⌕</button><label class="ledger-period"><span class="sr-only">Период операций</span><select id="ledgerPeriod"><option value="all">За всё время</option><option value="current">Этот месяц</option><option value="previous">Прошлый месяц</option></select></label></div></div>
+        <div class="filters ledger-filters" id="historyFilters"><button type="button" class="selected" data-history-filter="all">Все</button><button type="button" data-history-filter="expense">Расходы</button><button type="button" data-history-filter="income">Доходы</button><button type="button" data-history-filter="transfers">Цели и баланс</button></div>
+        <label class="ledger-search" id="ledgerSearchField" hidden><span aria-hidden="true">⌕</span><span class="sr-only">Поиск операций</span><input id="ledgerSearch" type="search" placeholder="Комментарий или категория" autocomplete="off"></label>
+        <p id="ledgerSummary" class="ledger-summary" aria-live="polite"></p>
+        <div class="history-list" id="historyList"></div>
+      </section>
     </section>
 
     <section id="plan" class="screen">
@@ -76,12 +73,6 @@
       <div class="page-title"><div><p class="eyebrow">ВАШИ МЕЧТЫ</p><h1>Накопления</h1></div><button class="round-add" data-action="goal">+</button></div>
       <div class="goals-total"><span>Всего накоплено</span><strong id="goalsTotal">184 000 ₽</strong><p>Вы уже на 31% пути к своим целям</p></div>
       <div class="goals-list" id="goalsList"></div>
-    </section>
-
-    <section id="history" class="screen">
-      <div class="page-title"><div><p class="eyebrow">ДВИЖЕНИЕ ДЕНЕГ</p><h1>История</h1></div><button class="filter-button">☷</button></div>
-      <div class="filters" id="historyFilters"><button class="selected" data-history-filter="all">Все</button><button data-history-filter="expense">Расходы</button><button data-history-filter="income">Доходы</button></div>
-      <div class="history-list" id="historyList"></div>
     </section>
 
     <section id="stats" class="screen">
@@ -137,11 +128,16 @@
     </section>
 
     <nav class="bottom-nav">
-      <button class="nav-item active" data-go="home"><span>⌂</span>Главная</button><button class="nav-item" data-go="plan"><span>▤</span>План</button><button class="nav-item" data-go="goals"><span>◎</span>Цели</button><button class="nav-item" data-go="history"><span>◷</span>История</button><button class="nav-item" data-go="stats"><span>◔</span>Аналитика</button><button class="nav-item" data-go="categories"><span>☷</span>Категории</button>
+      <button class="nav-item active" data-go="home"><span>☷</span>Главная</button><button class="nav-item" data-go="plan"><span>▤</span>План</button><button class="nav-item" data-go="goals"><span>◎</span>Цели</button><button class="nav-item" data-go="stats"><span>◔</span>Аналитика</button><button class="nav-item" data-go="categories"><span>▦</span>Категории</button>
     </nav>
+    <button id="addLedgerOperation" class="ledger-add" type="button" aria-label="Добавить операцию">+</button>
   </main>
 
   <div class="modal-backdrop" id="modalBackdrop"></div>
+  <section class="modal" id="operationTypeModal" aria-modal="true" role="dialog" aria-labelledby="operationTypeTitle">
+    <div class="modal-handle"></div><div class="modal-title"><h2 id="operationTypeTitle">Добавить операцию</h2><button class="close-modal" aria-label="Закрыть">×</button></div>
+    <div class="operation-type-choices"><button type="button" data-action="expense"><span>−</span>Расход</button><button type="button" data-action="income"><span>+</span>Доход</button></div>
+  </section>
   <section class="modal opening-balance-modal" id="openingBalanceModal" aria-modal="true" aria-labelledby="openingBalanceModalTitle" role="dialog">
     <div class="modal-handle"></div>
     <p class="eyebrow">НАЧАЛО УЧЁТА</p>
@@ -165,6 +161,7 @@
       <label>Комментарий <input id="operationComment" type="text" placeholder="Например, такси до дома"></label>
       <div class="date-time"><label>Дата <input id="operationDate" type="date" required></label><label>Время <input id="operationTime" type="time" required></label></div>
       <button class="primary-button" type="submit">Сохранить операцию</button>
+      <button id="deleteOpenedOperation" class="danger-button" type="button" hidden>Удалить операцию</button>
       <p class="hint convert-opening-balance-hint" id="convertIncomeToOpeningBalanceHint" hidden>Используйте это только для фиктивного первого дохода: сумма останется в остатке, но перестанет считаться доходом.</p>
       <button class="secondary-button convert-opening-balance" id="convertIncomeToOpeningBalance" type="button" hidden>Сделать стартовым балансом</button>
     </form>

@@ -65,6 +65,11 @@
       <article class="unallocated-card"><div><span>Не распределено</span><strong id="planUnallocated">89 800 ₽</strong></div><span class="unallocated-icon">⌁</span></article>
       <div class="hint">Распределите доход по категориям — так вы всегда будете знать, сколько ещё можно потратить.</div>
       <div class="budget-list" id="budgetList"></div>
+      <section id="goalPlanSection" class="goal-plan-section" hidden>
+        <div class="section-heading"><h2>На цели в этом месяце</h2><button type="button" class="text-button" data-go="goals">Все цели</button></div>
+        <p class="hint">Резерв входит в распределение бюджета. Пополняйте цели, когда готовы перевести деньги.</p>
+        <div id="goalPlanList" class="budget-list"></div>
+      </section>
     </section>
 
     <section id="goals" class="screen">
@@ -164,7 +169,27 @@
       <button class="secondary-button convert-opening-balance" id="convertIncomeToOpeningBalance" type="button" hidden>Сделать стартовым балансом</button>
     </form>
   </section>
-  <section class="modal" id="goalModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="goalModalTitle">Новая цель</h2><button class="close-modal">×</button></div><form id="goalForm"><input id="goalId" type="hidden"><label>Название <input id="goalTitle" type="text" required placeholder="Например, отпуск"></label><label>Описание <input id="goalDescription" type="text" placeholder="Зачем и для чего копите"></label><label>Сумма цели<div class="amount-input"><input id="goalAmount" type="number" min="1" required placeholder="0"><span>₽</span></div></label><label>Накоплено сейчас<div class="amount-input"><input id="goalCurrent" type="number" min="0" value="0"><span>₽</span></div></label><label>Желаемая дата <input id="goalDate" type="date"></label><button class="primary-button" type="submit">Сохранить цель</button><button class="danger-button" id="deleteGoal" type="button" hidden>Удалить цель</button></form></section>
+  <section class="modal" id="goalModal" aria-modal="true" role="dialog">
+    <div class="modal-handle"></div><div class="modal-title"><h2 id="goalModalTitle">Новая цель</h2><button class="close-modal">×</button></div>
+    <form id="goalForm">
+      <input id="goalId" type="hidden">
+      <label>Название <input id="goalTitle" type="text" required placeholder="Например, отпуск"></label>
+      <label>Описание <input id="goalDescription" type="text" placeholder="Зачем и для чего копите"></label>
+      <label>Сумма цели<div class="amount-input"><input id="goalAmount" type="number" min="1" required placeholder="0"><span>₽</span></div></label>
+      <label>Накоплено сейчас<div class="amount-input"><input id="goalCurrent" type="number" min="0" value="0"><span>₽</span></div></label>
+      <label>Желаемая дата <input id="goalDate" type="date"></label>
+      <p class="goal-suggestion" id="goalSuggestion" aria-live="polite"></p>
+      <label class="goal-monthly-toggle"><input id="goalMonthlyEnabled" type="checkbox"><span>Каждый месяц резервировать на цель</span></label>
+      <div id="goalMonthlyFields" hidden>
+        <label>Ежемесячный резерв<div class="amount-input"><input id="goalMonthlyAmount" type="number" min="1" step="1" inputmode="numeric" placeholder="0"><span>₽</span></div></label>
+        <button id="useGoalRecommendation" class="text-button goal-use-recommendation" type="button">Взять сумму из расчёта</button>
+        <p class="hint">Начиная с этого месяца. Сумма сохраняется, пока вы её не измените. Пополнения за месяц уменьшают резерв; списаний автоматически не будет. После достижения цели резерв равен нулю.</p>
+      </div>
+      <p id="goalFormNotice" class="inline-notice" role="status" hidden></p>
+      <button class="primary-button" type="submit">Сохранить цель</button>
+      <button class="danger-button" id="deleteGoal" type="button" hidden>Удалить цель</button>
+    </form>
+  </section>
   <section class="modal" id="budgetModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="budgetModalTitle">Распределить бюджет</h2><button class="close-modal">×</button></div><form id="budgetForm"><input id="budgetId" type="hidden"><label>Категория<select id="budgetCategory"></select></label><label>Сумма на август<div class="amount-input"><input id="budgetAmount" type="number" min="0" required placeholder="0"><span>₽</span></div></label><button class="primary-button" type="submit">Сохранить бюджет</button><button class="danger-button" id="removeBudget" type="button" hidden>Убрать из финансового плана</button></form></section>
   <section class="modal" id="planModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2>Настроить план</h2><button class="close-modal">×</button></div><form id="planForm"><label>Доход для распределения<div class="amount-input"><input id="planIncome" type="number" min="0" required><span>₽</span></div></label><p class="hint">Это планируемая сумма на месяц. Её можно изменить в любой момент, не меняя историю операций.</p><button class="primary-button" type="submit">Сохранить план</button></form></section>
   <section class="modal" id="categoryModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="categoryModalTitle">Новая категория</h2><button class="close-modal">×</button></div><form id="categoryForm"><input id="categoryId" type="hidden"><label>Тип<select id="categoryType"><option value="expense">Расход</option><option value="income">Доход</option></select></label><label>Эмодзи <input id="categoryEmoji" type="text" required maxlength="4" placeholder="🛒"></label><label>Название <input id="categoryName" type="text" required placeholder="Например, здоровье"></label><label>Цвет <input id="categoryColor" type="color" value="#6756d9"></label><button class="primary-button" type="submit">Сохранить категорию</button><button class="danger-button" id="archiveCategory" type="button" hidden>Архивировать категорию</button></form></section>
@@ -185,5 +210,6 @@
   </section>
 </body>
 <script src="telegram.js"></script>
+<script src="goal-planning.js"></script>
 <script src="app.js"></script>
 </html>

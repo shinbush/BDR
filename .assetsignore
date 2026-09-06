@@ -12,5 +12,6 @@ README.md
 .gitignore
 .wrangler/
 node_modules/
+tests/
 .env*
 .dev.vars*

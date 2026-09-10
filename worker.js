@@ -3,11 +3,11 @@ const decoder = new TextDecoder();
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DELIVERY_LEASE_MS = 5 * 60 * 1000;
 const MAX_PAYMENT_FORECAST_HORIZON_MS = 370 * DAY_MS;
-const MAX_PAYMENT_FORECAST_OCCURRENCES = 64;
+const MAX_PAYMENT_FORECAST_OCCURRENCES = 372;
 const MAX_STATE_BYTES = 900_000;
 const MAX_PAYMENT_BYTES = 12_000;
 const MAX_WEBHOOK_BYTES = 128_000;
-const PAYMENT_CADENCES = new Set(['weekly', 'monthly', 'yearly']);
+const PAYMENT_CADENCES = new Set(['daily', 'weekly', 'every_15_days', 'monthly', 'yearly']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -160,7 +160,8 @@ function parsePaymentPayload(payload) {
     throw requestError('Invalid next reminder time');
   }
 
-  return { title, categoryId, amount, cadence, timeLocal, timezone, nextReminderAt };
+  const intervalDays = cadence === 'every_15_days' ? 15 : cadence === 'daily' ? 1 : null;
+  return { title, categoryId, amount, cadence: intervalDays ? 'weekly' : cadence, intervalDays, timeLocal, timezone, nextReminderAt };
 }
 
 function paymentFromRow(row) {
@@ -170,7 +171,8 @@ function paymentFromRow(row) {
     title: row.title,
     amount: Number(row.amount),
     category_id: row.category_id,
-    cadence: row.cadence,
+    cadence: Number(row.interval_days) === 15 ? 'every_15_days' : Number(row.interval_days) === 1 ? 'daily' : row.cadence,
+    interval_days: row.interval_days == null ? null : Number(row.interval_days),
     time_local: row.time_local,
     timezone: row.timezone,
     anchor_day: Number(row.anchor_day),
@@ -187,7 +189,7 @@ function paymentFromRow(row) {
 
 const paymentSelect = `
   SELECT
-    p.id, p.title, p.amount, p.category_id, p.cadence, p.time_local, p.timezone, p.anchor_day,
+    p.id, p.title, p.amount, p.category_id, p.cadence, p.interval_days, p.time_local, p.timezone, p.anchor_day,
     p.next_reminder_at, p.active, p.created_at, p.updated_at,
     r.id AS open_reminder_id,
     r.occurrence_at AS open_reminder_occurrence_at,
@@ -263,8 +265,9 @@ function occurrenceAfter(payment, occurrenceAt, intervals = 1) {
   const anchorDay = Number(payment.anchor_day) || local.day;
   const count = Math.max(1, Math.floor(Number(intervals) || 1));
   let target;
-  if (payment.cadence === 'weekly') {
-    target = addDays(local.year, local.month, local.day, 7 * count);
+  const intervalDays = Number(payment.interval_days) || ({daily:1,weekly:7,every_15_days:15}[payment.cadence]);
+  if (intervalDays) {
+    target = addDays(local.year, local.month, local.day, intervalDays * count);
   } else if (payment.cadence === 'monthly') {
     const absoluteMonth = local.year * 12 + (local.month - 1) + count;
     const year = Math.floor(absoluteMonth / 12);
@@ -285,10 +288,11 @@ function firstFutureOccurrence(payment, occurrenceAt, now) {
   const occurrenceLocal = zonedParts(occurrenceAt, payment.timezone);
   const nowLocal = zonedParts(now, payment.timezone);
   let intervals = 1;
-  if (payment.cadence === 'weekly') {
+  const intervalDays = Number(payment.interval_days) || ({daily:1,weekly:7,every_15_days:15}[payment.cadence]);
+  if (intervalDays) {
     const occurrenceDay = Date.UTC(occurrenceLocal.year, occurrenceLocal.month - 1, occurrenceLocal.day);
     const nowDay = Date.UTC(nowLocal.year, nowLocal.month - 1, nowLocal.day);
-    intervals = Math.max(1, Math.floor((nowDay - occurrenceDay) / (7 * DAY_MS)));
+    intervals = Math.max(1, Math.floor((nowDay - occurrenceDay) / (intervalDays * DAY_MS)));
   } else if (payment.cadence === 'monthly') {
     intervals = Math.max(1, (nowLocal.year - occurrenceLocal.year) * 12 + nowLocal.month - occurrenceLocal.month);
   } else {
@@ -352,9 +356,9 @@ async function createPayment(env, telegramId, payload) {
   const id = crypto.randomUUID();
   const anchorDay = zonedParts(payment.nextReminderAt, payment.timezone).day;
   await env.DB.prepare(`INSERT INTO planned_payments
-    (id, telegram_id, title, amount, category_id, cadence, time_local, timezone, anchor_day, next_reminder_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, telegramId, payment.title, payment.amount, payment.categoryId, payment.cadence, payment.timeLocal, payment.timezone, anchorDay, payment.nextReminderAt)
+    (id, telegram_id, title, amount, category_id, cadence, interval_days, time_local, timezone, anchor_day, next_reminder_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, telegramId, payment.title, payment.amount, payment.categoryId, payment.cadence, payment.intervalDays, payment.timeLocal, payment.timezone, anchorDay, payment.nextReminderAt)
     .run();
   return getPayment(env, telegramId, id);
 }
@@ -366,9 +370,9 @@ async function updatePayment(env, telegramId, paymentId, payload) {
   const anchorDay = zonedParts(payment.nextReminderAt, payment.timezone).day;
   await env.DB.batch([
     env.DB.prepare(`UPDATE planned_payments
-      SET title = ?, amount = ?, category_id = ?, cadence = ?, time_local = ?, timezone = ?, anchor_day = ?, next_reminder_at = ?, updated_at = CURRENT_TIMESTAMP
+      SET title = ?, amount = ?, category_id = ?, cadence = ?, interval_days = ?, time_local = ?, timezone = ?, anchor_day = ?, next_reminder_at = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND telegram_id = ? AND active = 1`)
-      .bind(payment.title, payment.amount, payment.categoryId, payment.cadence, payment.timeLocal, payment.timezone, anchorDay, payment.nextReminderAt, paymentId, telegramId),
+      .bind(payment.title, payment.amount, payment.categoryId, payment.cadence, payment.intervalDays, payment.timeLocal, payment.timezone, anchorDay, payment.nextReminderAt, paymentId, telegramId),
     env.DB.prepare(`UPDATE payment_reminders
       SET resolution = 'cancelled', updated_at = CURRENT_TIMESTAMP
       WHERE payment_id = ? AND telegram_id = ? AND resolution IS NULL`)
@@ -389,7 +393,7 @@ async function deletePayment(env, telegramId, paymentId) {
 async function getOpenReminder(env, telegramId, paymentId, reminderId = null) {
   const filter = reminderId ? 'AND r.id = ?' : '';
   const statement = env.DB.prepare(`SELECT
-      p.id, p.telegram_id, p.title, p.amount, p.category_id, p.cadence, p.time_local, p.timezone, p.anchor_day, p.next_reminder_at, p.active,
+      p.id, p.telegram_id, p.title, p.amount, p.category_id, p.cadence, p.interval_days, p.time_local, p.timezone, p.anchor_day, p.next_reminder_at, p.active,
       r.id AS reminder_id, r.occurrence_at, r.next_attempt_at, r.delivery_status
     FROM planned_payments p
     JOIN payment_reminders r ON r.payment_id = p.id

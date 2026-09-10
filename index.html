@@ -30,7 +30,7 @@
             </section>
 
             <section class="balance-slide safe-spending-slide" id="safeSpendingCard" aria-label="Деньги до конца месяца" aria-live="polite">
-              <div class="balance-top"><span>Деньги до конца месяца</span><span class="balance-slide-badge">Прогноз</span></div>
+              <div class="balance-top"><span id="safeSpendingPeriodTitle">Деньги до конца месяца</span><span class="balance-slide-badge">Прогноз</span></div>
               <div class="safe-spending-heading">
                 <div><p class="safe-spending-title" id="safeSpendingTitle">Рассчитываем свободную сумму</p><strong class="safe-spending-value" id="safeSpendingValue">…</strong></div>
                 <span class="safe-spending-icon" aria-hidden="true">✦</span>
@@ -58,9 +58,10 @@
     </section>
 
     <section id="plan" class="screen">
-      <div class="page-title"><div><p class="eyebrow" id="planMonthLabel">АВГУСТ 2026</p><h1>Финансовый план</h1></div><div class="title-actions"><button class="filter-button" id="prevPlanMonth" aria-label="Предыдущий месяц">‹</button><button class="filter-button" id="nextPlanMonth" aria-label="Следующий месяц">›</button><button class="filter-button" id="editPlan" aria-label="Настроить план">⚙</button><button class="round-add" id="addBudget">+</button></div></div>
+      <div class="page-title"><div><p class="eyebrow" id="planMonthLabel">АВГУСТ 2026</p><h1>Финансовый план</h1></div><div class="title-actions"><button class="filter-button" id="prevPlanMonth" aria-label="Предыдущий период">‹</button><button class="filter-button" id="nextPlanMonth" aria-label="Следующий период">›</button><button class="filter-button" id="editPlan" aria-label="Настроить план">⚙</button><button class="round-add" id="addBudget">+</button></div></div>
+      <div class="plan-period-controls"><label>Планировать<select id="planPeriodMode"><option value="month">На месяц</option><option value="salary">От зарплаты до зарплаты · 15 дней</option></select></label><label id="salaryAnchorField" hidden>Дата одной из зарплат<input id="salaryAnchor" type="date" required></label><p class="hint" id="planPeriodHint"></p></div>
       <article class="unallocated-card"><div><span>Не распределено</span><strong id="planUnallocated">89 800 ₽</strong></div><span class="unallocated-icon">⌁</span></article>
-      <div class="hint">Распределите доход по категориям — так вы всегда будете знать, сколько ещё можно потратить.</div>
+      <div id="planBreakdown" class="plan-breakdown"></div><p class="hint" id="planForecastNote" aria-live="polite"></p><button type="button" class="text-button" data-go="payments">Настроить платежи и напоминания</button>
       <div class="budget-list" id="budgetList"></div>
       <section id="goalPlanSection" class="goal-plan-section" hidden>
         <div class="section-heading"><h2>На цели в этом месяце</h2><button type="button" class="text-button" data-go="goals">Все цели</button></div>
@@ -187,8 +188,8 @@
       <button class="danger-button" id="deleteGoal" type="button" hidden>Удалить цель</button>
     </form>
   </section>
-  <section class="modal" id="budgetModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="budgetModalTitle">Распределить бюджет</h2><button class="close-modal">×</button></div><form id="budgetForm"><input id="budgetId" type="hidden"><label>Категория<select id="budgetCategory"></select></label><label>Сумма на август<div class="amount-input"><input id="budgetAmount" type="number" min="0" required placeholder="0"><span>₽</span></div></label><button class="primary-button" type="submit">Сохранить бюджет</button><button class="danger-button" id="removeBudget" type="button" hidden>Убрать из финансового плана</button></form></section>
-  <section class="modal" id="planModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2>Настроить план</h2><button class="close-modal">×</button></div><form id="planForm"><label>Доход для распределения<div class="amount-input"><input id="planIncome" type="number" min="0" required><span>₽</span></div></label><p class="hint">Это планируемая сумма на месяц. Её можно изменить в любой момент, не меняя историю операций.</p><button class="primary-button" type="submit">Сохранить план</button></form></section>
+  <section class="modal" id="budgetModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="budgetModalTitle">Распределить бюджет</h2><button class="close-modal">×</button></div><form id="budgetForm"><input id="budgetId" type="hidden"><label>Категория<select id="budgetCategory"></select></label><label>Сумма на выбранный период<div class="amount-input"><input id="budgetAmount" type="number" min="0" required placeholder="0"><span>₽</span></div></label><button class="primary-button" type="submit">Сохранить бюджет</button><button class="danger-button" id="removeBudget" type="button" hidden>Убрать из финансового плана</button></form></section>
+  <section class="modal" id="planModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2>Настроить план</h2><button class="close-modal">×</button></div><form id="planForm"><label>Период<select id="planSettingsMode"><option value="month">На месяц</option><option value="salary">От зарплаты до зарплаты · 15 дней</option></select></label><label>Дата одной из зарплат<input id="planSettingsAnchor" type="date" required></label><p class="hint">Дата задаёт начало 15-дневных циклов. Она используется только в режиме «от зарплаты до зарплаты». Баланс и операции не меняются.</p><button class="primary-button" type="submit">Сохранить настройки</button></form></section>
   <section class="modal" id="categoryModal" aria-modal="true" role="dialog"><div class="modal-handle"></div><div class="modal-title"><h2 id="categoryModalTitle">Новая категория</h2><button class="close-modal">×</button></div><form id="categoryForm"><input id="categoryId" type="hidden"><label>Тип<select id="categoryType"><option value="expense">Расход</option><option value="income">Доход</option></select></label><label>Эмодзи <input id="categoryEmoji" type="text" required maxlength="4" placeholder="🛒"></label><label>Название <input id="categoryName" type="text" required placeholder="Например, здоровье"></label><label>Цвет <input id="categoryColor" type="color" value="#6756d9"></label><button class="primary-button" type="submit">Сохранить категорию</button><button class="danger-button" id="archiveCategory" type="button" hidden>Архивировать категорию</button></form></section>
   <section class="modal" id="plannedPaymentModal" aria-modal="true" role="dialog">
     <div class="modal-handle"></div><div class="modal-title"><h2 id="plannedPaymentModalTitle">Новый плановый платёж</h2><button class="close-modal">×</button></div>
@@ -197,7 +198,7 @@
       <label>Название <input id="plannedPaymentTitle" type="text" maxlength="80" required placeholder="Например, аренда квартиры"></label>
       <label>Сумма<div class="amount-input"><input id="plannedPaymentAmount" type="number" min="1" step="1" required placeholder="0"><span>₽</span></div></label>
       <label>Категория расхода<select id="plannedPaymentCategory" required></select></label>
-      <label>Повторять<select id="plannedPaymentFrequency"><option value="weekly">Каждую неделю</option><option value="monthly" selected>Каждый месяц</option><option value="yearly">Каждый год</option></select></label>
+      <label>Повторять<select id="plannedPaymentFrequency"><option value="daily">Каждый день</option><option value="weekly">Каждую неделю</option><option value="every_15_days">Каждые 15 дней</option><option value="monthly" selected>Каждый месяц</option><option value="yearly">Каждый год</option></select></label>
       <div class="date-time"><label>Первое напоминание <input id="plannedPaymentDate" type="date" required></label><label>Время <input id="plannedPaymentTime" type="time" required></label></div>
       <p class="hint">В нужное время Telegram напомнит о платеже. Баланс изменится только после сохранения операции.</p>
       <p class="inline-notice form-notice" id="plannedPaymentFormNotice" hidden></p>
@@ -208,5 +209,6 @@
 </body>
 <script src="telegram.js"></script>
 <script src="goal-planning.js"></script>
+<script src="planning.js"></script>
 <script src="app.js"></script>
 </html>

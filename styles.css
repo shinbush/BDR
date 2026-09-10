@@ -26,6 +26,10 @@ html,body{touch-action:manipulation}.edit-transaction{width:25px;height:25px;mar
 
 #home .balance-slides{overflow-y:hidden}
 
+/* Salary-to-salary planning and Telegram fullscreen safe areas. */
+.plan-period-controls{margin:0 0 16px}.plan-period-controls label{display:block;margin-bottom:10px}.plan-period-controls label[hidden]{display:none}.plan-period-controls select{font-size:14px}.plan-breakdown{margin:12px 0;padding:14px;background:var(--surface);border-radius:14px;font-size:11px}.plan-breakdown:empty{display:none}.plan-breakdown>div{display:flex;justify-content:space-between;gap:12px;padding:5px 0}.plan-breakdown b{white-space:nowrap}.plan-subtotal{border-top:1px solid #eceaf5;border-bottom:1px solid #eceaf5;margin:5px 0;color:var(--purple)}#plan .page-title{flex-wrap:wrap;gap:12px}#plan .budget-list{margin-top:14px}
+.app-shell{padding-top:calc(20px + max(env(safe-area-inset-top),var(--app-safe-top,0px)));padding-bottom:calc(100px + max(env(safe-area-inset-bottom),var(--app-safe-bottom,0px)));padding-left:calc(18px + var(--app-safe-left,0px));padding-right:calc(18px + var(--app-safe-right,0px))}.bottom-nav{height:calc(75px + max(env(safe-area-inset-bottom),var(--app-safe-bottom,0px)));padding-bottom:calc(9px + max(env(safe-area-inset-bottom),var(--app-safe-bottom,0px)))}.ledger-add{bottom:calc(89px + max(env(safe-area-inset-bottom),var(--app-safe-bottom,0px)))}.modal{max-height:calc(100dvh - max(env(safe-area-inset-top),var(--app-safe-top,0px)));padding-bottom:calc(28px + max(env(safe-area-inset-bottom),var(--app-safe-bottom,0px)))}.tg-fullscreen body{padding:0}.tg-fullscreen .app-shell{border-radius:0;min-height:100dvh}.tg-fullscreen .bottom-nav{bottom:0;border-radius:0}
+
 /* Analytics: all values are calculated from the operation history in app.js. */
 
 /* Interactive analytics chart. */

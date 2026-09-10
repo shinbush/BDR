@@ -6,6 +6,7 @@ const path=require('node:path');
 const root=path.join(__dirname,'..');
 const context=vm.createContext({});
 vm.runInContext(fs.readFileSync(path.join(root,'goal-planning.js'),'utf8'),context);
+vm.runInContext(fs.readFileSync(path.join(root,'planning.js'),'utf8'),context);
 const now=new Date(2026,8,6,12);
 const goal={id:'mac',target:150000,current:87000,date:'2026-12-31',monthlyEnabled:true,monthlyAmount:15750,monthlyStartMonth:'2026-09'};
 const detail=(item=goal,transactions=[],month='2026-09')=>context.goalPlanDetails(item,transactions,now,month);
@@ -57,6 +58,8 @@ test('safe spending deducts future goal reserve once alongside budgets and remin
   const functions=app.slice(app.indexOf('function currentMonthPlanForSafeSpending()'),app.indexOf('function renderSafeSpending()'));
   context.state={goals:[{...goal,monthlyStartMonth:'2000-01'}],transactions:[],plans:{current:{budgets:{food:10000},spent:{food:2000}}}};
   context.monthKey=()=> 'current';context.availableNow=()=>82000;context.goalNet=()=>87000;
+  context.getPlan=()=>context.state.plans.current;
+  context.selectedPlanningPeriod=()=>context.planningPeriod('month','',now,'2026-09');
   vm.runInContext(functions,context);
   const result=context.safeSpendingDetails({total:3000,byCategory:{food:3000}});
   assert.equal(result.budgetExtra,5000);assert.equal(result.futureGoals,15750);assert.equal(result.free,58250);

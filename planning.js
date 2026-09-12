@@ -1,4 +1,9 @@
 // Pure calendar and reserve calculations. Ranges include start, exclude end.
+function planningBudgetProgress(limit, spent) {
+  limit=Math.max(0,Number(limit)||0);spent=Math.max(0,Number(spent)||0);
+  const over=spent>limit,percent=limit?Math.round(spent/limit*100):spent?100:0;
+  return {over,percent,width:Math.min(percent,100),remaining:limit-spent};
+}
 function planningDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }

@@ -611,12 +611,17 @@ function movePlanningPeriod(direction) {
 }
 $('#planPeriodMode').addEventListener('change',()=>{state.planning.mode=$('#planPeriodMode').value;selectedSalaryOffset=0;selectedPlanMonth=monthKey(new Date());render()});
 $('#salaryAnchor').addEventListener('change',()=>{const value=$('#salaryAnchor').value;if(!planningValidDate(value))return;state.planning.anchor=value;selectedSalaryOffset=0;render()});
+function budgetCardHtml(category,plan) {
+  const budget=Number(plan.budgets[category.id]||0),spent=Number(plan.spent[category.id]||0);
+  const {over,percent,width,remaining}=planningBudgetProgress(budget,spent);
+  return `<article class="budget-item${over?' over':''}" data-edit-budget="${escapeHtml(category.id)}"><div class="budget-row"><span class="budget-emoji">${escapeHtml(category.emoji)}</span><div><div class="budget-name">${escapeHtml(category.name)}</div><div class="budget-numbers">Потрачено ${money(spent)} из ${money(budget)}</div></div><div class="budget-remain">${money(remaining)}<small>${over?'Перерасход':percent+'% использовано'}</small></div></div><div class="budget-bar" role="progressbar" aria-label="${escapeHtml(category.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${width}" aria-valuetext="${percent}%${over?', перерасход':''}"><span style="width:${width}%"></span></div></article>`;
+}
 function render(){
   const available=availableNow(), plan=getPlan();
   $('#balanceValue').textContent=money(available);$('#incomeSmall').textContent=money(state.income);$('#expenseSmall').textContent=money(expenses());
   renderPlanSummary();
   renderHistory();
-  $('#budgetList').innerHTML=planCategories().map(c=>{const budget=Number(plan.budgets[c.id]||0),spent=Number(plan.spent[c.id]||0),percent=budget?Math.round(spent/budget*100):0,over=spent>budget;return `<article class="budget-item ${over?'over':''}" data-edit-budget="${c.id}"><div class="budget-row"><span class="budget-emoji">${c.emoji}</span><div><div class="budget-name">${c.name}</div><div class="budget-numbers">Потрачено ${money(spent)} из ${money(budget)}</div></div><div class="budget-remain">${money(budget-spent)}<small>${over?'Перерасход':percent+'% использовано'}</small></div></div><div class="budget-bar"><span style="width:${Math.min(percent,100)}%;background:${c.color||''}"></span></div></article>`}).join('')||'<p class="hint">В этом периоде ещё нет распределённых категорий.</p>';
+  $('#budgetList').innerHTML=planCategories().map(c=>budgetCardHtml(c,plan)).join('')||'<p class="hint">В этом периоде ещё нет распределённых категорий.</p>';
   renderGoals(); renderGoalPlan();
   renderAnalytics();renderCategories();renderPlannedPayments();save();
 }
@@ -649,7 +654,7 @@ function initBalanceCarousel(){
   if(window.ResizeObserver){const observer=new ResizeObserver(syncBalanceHeight);Array.from(slides.children).forEach(slide=>observer.observe(slide))}
   updateBalanceSlideDots();
 }
-function showScreen(id){if(id==='history')id='home';$('#addLedgerOperation').hidden=id!=='home';document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===id));if(id==='stats')renderAnalytics();window.Telegram?.WebApp?.BackButton?.[id==='home'?'hide':'show']?.();window.scrollTo(0,0);if(id==='home')requestAnimationFrame(syncBalanceHeight)}
+function showScreen(id){const openPayments=id==='payments';if(openPayments)id='plan';if(id==='history')id='home';$('#addLedgerOperation').hidden=id!=='home';document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===id));if(id==='stats')renderAnalytics();window.Telegram?.WebApp?.BackButton?.[id==='home'?'hide':'show']?.();window.scrollTo(0,0);if(id==='home')requestAnimationFrame(syncBalanceHeight);if(openPayments)requestAnimationFrame(()=>$('#payments').scrollIntoView({block:'start'}))}
 function closeModal(){document.querySelectorAll('.modal').forEach(x=>x.classList.remove('open'));$('#modalBackdrop').classList.remove('open');$('#operationContext').hidden=true;pendingPaymentCompletion=null;window.Telegram?.WebApp?.BackButton?.hide?.()}
 function openModal(id){closeModal();$('#'+id).classList.add('open');$('#modalBackdrop').classList.add('open');window.Telegram?.WebApp?.BackButton?.[id==='openingBalanceModal'?'hide':'show']?.()}
 function openingBalanceTransaction(){return state.transactions.find(t=>t.type==='opening_balance')}
@@ -742,7 +747,7 @@ $('#goalForm').addEventListener('submit',event=>{event.preventDefault();saveGoal
 $('#categoryForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#categoryId').value,data={type:$('#categoryType').value,emoji:$('#categoryEmoji').value,name:$('#categoryName').value,color:$('#categoryColor').value};if(id)Object.assign(getCategory(id),data);else state.categories.push({id:'cat-'+Date.now(),...data,spent:0,archived:false});closeModal();categoryTab=data.type;render();haptic()});$('#archiveCategory').addEventListener('click',()=>{const c=getCategory($('#categoryId').value);if(c){c.archived=true;closeModal();render();haptic()}});$('#removeBudget').addEventListener('click',()=>{const plan=getPlan(),id=$('#budgetId').value,c=getCategory(id);if(c&&confirm(`Убрать «${c.name}» из финансового плана?`)){delete plan.budgets[id];delete plan.spent[id];closeModal();render();haptic()}});$('#deleteGoal').addEventListener('click',()=>{const g=getGoal($('#goalId').value);if(g&&confirm(`Удалить цель «${g.title}»?`)){if(g.current){const fields=nowFields();state.transactions.unshift({id:Date.now(),type:'goal_withdrawal',goalId:g.id,amount:g.current,comment:'Закрытие цели',...fields})}state.goals=state.goals.filter(x=>x.id!==g.id);closeModal();render();haptic()}});
 
 document.addEventListener('click',event=>{
-  if(event.target.closest('[data-go="payments"]')) { loadPlannedPayments(); return; }
+  if(event.target.closest('[data-go="payments"], [data-go="plan"]')) { loadPlannedPayments(); return; }
   if(event.target.closest('#addPlannedPayment')||event.target.closest('#emptyAddPlannedPayment')) { event.preventDefault(); openPlannedPaymentModal(); return; }
   const edit=event.target.closest('[data-edit-planned-payment]'); if(edit) { event.preventDefault(); openPlannedPaymentModal(edit.dataset.editPlannedPayment); return; }
   const action=event.target.closest('[data-planned-action]'); if(action) { event.preventDefault(); performPlannedPaymentAction(action.dataset.plannedAction,action.dataset.plannedPaymentId,action.dataset.reminderId); }

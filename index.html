@@ -61,12 +61,18 @@
       <div class="page-title"><div><p class="eyebrow" id="planMonthLabel">АВГУСТ 2026</p><h1>Финансовый план</h1></div><div class="title-actions"><button class="filter-button" id="prevPlanMonth" aria-label="Предыдущий период">‹</button><button class="filter-button" id="nextPlanMonth" aria-label="Следующий период">›</button><button class="filter-button" id="editPlan" aria-label="Настроить план">⚙</button><button class="round-add" id="addBudget">+</button></div></div>
       <div class="plan-period-controls"><label>Планировать<select id="planPeriodMode"><option value="month">На месяц</option><option value="salary">От зарплаты до зарплаты · 15 дней</option></select></label><label id="salaryAnchorField" hidden>Дата одной из зарплат<input id="salaryAnchor" type="date" required></label><p class="hint" id="planPeriodHint"></p></div>
       <article class="unallocated-card"><div><span>Не распределено</span><strong id="planUnallocated">89 800 ₽</strong></div><span class="unallocated-icon">⌁</span></article>
-      <div id="planBreakdown" class="plan-breakdown"></div><p class="hint" id="planForecastNote" aria-live="polite"></p><button type="button" class="text-button" data-go="payments">Настроить платежи и напоминания</button>
+      <div id="planBreakdown" class="plan-breakdown"></div><p class="hint" id="planForecastNote" aria-live="polite"></p><button type="button" class="text-button" data-go="payments">К плановым платежам ↓</button>
       <div class="budget-list" id="budgetList"></div>
       <section id="goalPlanSection" class="goal-plan-section" hidden>
         <div class="section-heading"><h2>На цели в этом месяце</h2><button type="button" class="text-button" data-go="goals">Все цели</button></div>
         <p class="hint">Резерв входит в распределение бюджета. Пополняйте цели, когда готовы перевести деньги.</p>
         <div id="goalPlanList" class="budget-list"></div>
+      </section>
+      <section id="payments" class="plan-payments-section" aria-labelledby="planPaymentsTitle">
+        <div class="section-heading"><h2 id="planPaymentsTitle">Плановые платежи</h2><button class="round-add" id="addPlannedPayment" aria-label="Добавить плановый платёж">+</button></div>
+        <p class="hint">Все ваши регулярные напоминания. В расчёте выше учитываются только платежи выбранного периода и незакрытые просроченные платежи текущего периода. Деньги не списываются без вашего подтверждения.</p>
+        <div class="inline-notice" id="plannedPaymentsNotice" aria-live="polite" hidden></div>
+        <div class="planned-payments-list" id="plannedPaymentsList"></div>
       </section>
     </section>
 
@@ -119,13 +125,6 @@
       <div class="filters category-tabs"><button class="selected" data-category-type="expense">Расходы</button><button data-category-type="income">Доходы</button></div>
       <p class="hint">Категории можно переименовывать, менять эмодзи и архивировать. Архивные категории не показываются при добавлении операций.</p>
       <div class="category-list" id="categoryList"></div>
-    </section>
-
-    <section id="payments" class="screen">
-      <div class="page-title"><div><p class="eyebrow">НАПОМИНАНИЯ</p><h1>Плановые платежи</h1></div><button class="round-add" id="addPlannedPayment" aria-label="Добавить плановый платёж">+</button></div>
-      <p class="hint">Это только напоминания. Деньги не списываются, пока вы сами не сохраните расход в «Копилке».</p>
-      <div class="inline-notice" id="plannedPaymentsNotice" aria-live="polite" hidden></div>
-      <div class="planned-payments-list" id="plannedPaymentsList"></div>
     </section>
 
     <nav class="bottom-nav">
